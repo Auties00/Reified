@@ -1,2 +1,5 @@
+it\auties\reified\simplified\SimpleMethods.class
+it\auties\reified\model\ReifiedCall.class
 it\auties\reified\simplified\SimpleClasses.class
+it\auties\reified\model\ReifiedCall$ReifiedCallBuilder.class
 module-info.class

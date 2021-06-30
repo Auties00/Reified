@@ -1,28 +1,70 @@
 package it.auties.reified.scanner;
 
-import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.*;
+import com.sun.tools.javac.code.Type;
+import com.sun.tools.javac.comp.Enter;
+import com.sun.tools.javac.comp.Resolve;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
+import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.Log;
+import com.sun.tools.javac.util.Pair;
+import it.auties.reified.model.ReifiedCall;
 import it.auties.reified.model.ReifiedParameter;
+import it.auties.reified.simplified.SimpleMethods;
 
-public class MethodInvocationScanner extends ReifiedScanner<JCTree.JCMethodInvocation>  {
-    public MethodInvocationScanner(ReifiedParameter parameter, Log logger) {
-        super(parameter, logger);
+import java.util.Objects;
+
+public class MethodInvocationScanner extends ReifiedScanner {
+    public MethodInvocationScanner(ReifiedParameter parameter, SimpleMethods simpleMethods, Log logger) {
+        super(parameter, simpleMethods, logger);
+    }
+
+    @Override
+    public Void visitClass(ClassTree node, Void unused) {
+        enclosingClass((JCTree.JCClassDecl) node);
+        return super.visitClass(node, unused);
+    }
+
+    @Override
+    public Void visitMethod(MethodTree node, Void unused) {
+        enclosingMethod((JCTree.JCMethodDecl) node);
+        return super.visitMethod(node, unused);
+    }
+
+    @Override
+    public Void visitVariable(VariableTree node, Void unused) {
+        callerStatement((JCTree.JCVariableDecl) node);
+        return super.visitVariable(node, unused);
+    }
+
+    @Override
+    public Void visitReturn(ReturnTree node, Void unused) {
+        callerStatement((JCTree.JCReturn) node);
+        return super.visitReturn(node, unused);
     }
 
     @Override
     public Void visitMethodInvocation(MethodInvocationTree node, Void unused) {
-        logger().printRawLines(Log.WriterKind.WARNING, "Method candidate: " + node);
-        if (parameter().methods().stream().noneMatch(method -> checkMethodEquality(method, node))) {
+        var rawNode = (JCTree.JCMethodInvocation) node;
+        var calling = simpleMethods().resolveMethod(enclosingClass(), enclosingMethod(), rawNode);
+        logger().printRawLines(Log.WriterKind.WARNING, "Method candidate(" + calling.getClass().getName() + "): " + calling);
+        if (calling.isEmpty() || parameter().methods().stream().noneMatch(method -> method.sym.equals(calling.get()))) {
             return super.visitMethodInvocation(node, unused);
         }
 
         logger().printRawLines(Log.WriterKind.WARNING, "Method invocation found: " + node);
-        results().add((JCTree.JCMethodInvocation) node);
+        results().add(buildResultCall((JCTree.JCMethodInvocation) node));
         return super.visitMethodInvocation(node, unused);
     }
 
+    private ReifiedCall buildResultCall(JCTree.JCMethodInvocation rawTree) {
+        return ReifiedCall.builder()
+                .caller(rawTree)
+                .callerStatement(callerStatement())
+                .enclosingMethod(Objects.requireNonNull(enclosingMethod(), "Method call outside of method"))
+                .build();
+    }
 
     private boolean checkMethodEquality(JCTree.JCMethodDecl method, MethodInvocationTree invocation){
         var methodName = method.getName();

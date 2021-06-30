@@ -3,6 +3,7 @@ open module it.auties.reified {
     requires jdk.compiler;
     requires com.google.auto.service;
     requires lombok;
+    requires com.google.gson;
     requires org.objectweb.asm;
 
     exports it.auties.reified.annotation;
