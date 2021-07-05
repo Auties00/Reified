@@ -14,8 +14,6 @@ import lombok.AllArgsConstructor;
 
 import javax.lang.model.element.Modifier;
 
-import java.util.Optional;
-
 import static com.sun.tools.javac.code.Flags.GENERATEDCONSTR;
 
 @AllArgsConstructor
@@ -23,7 +21,7 @@ public class SimpleClasses {
     private final SimpleTrees simpleTrees;
     private final SimpleTypes simpleTypes;
 
-    public ReifiedParameter.AccessModifier findRealAccess(Tree tree, Scope scope, boolean classScoped){
+    public ReifiedParameter.AccessModifier findRealAccess(Tree tree, Scope scope, boolean classScoped) {
         if (classScoped) {
             return findRealAccess((JCTree.JCClassDecl) tree);
         }
@@ -31,39 +29,39 @@ public class SimpleClasses {
         var clazz = simpleTrees.toTree(scope.getEnclosingClass());
         var classMod = findRealAccess((JCTree.JCClassDecl) clazz);
         var methodMod = ((JCTree.JCMethodDecl) tree).getModifiers().getFlags();
-        if(methodMod.contains(Modifier.PRIVATE)){
+        if (methodMod.contains(Modifier.PRIVATE)) {
             return ReifiedParameter.AccessModifier.PRIVATE;
         }
 
-        if(methodMod.contains(Modifier.PROTECTED)){
+        if (methodMod.contains(Modifier.PROTECTED)) {
             return ReifiedParameter.AccessModifier.PROTECTED;
         }
 
-        if(classMod == ReifiedParameter.AccessModifier.PACKAGE_PRIVATE){
+        if (classMod == ReifiedParameter.AccessModifier.PACKAGE_PRIVATE) {
             return ReifiedParameter.AccessModifier.PACKAGE_PRIVATE;
         }
 
         return ReifiedParameter.AccessModifier.PUBLIC;
     }
 
-    private ReifiedParameter.AccessModifier findRealAccess(JCTree.JCClassDecl method){
+    private ReifiedParameter.AccessModifier findRealAccess(JCTree.JCClassDecl method) {
         var methodMod = method.getModifiers().getFlags();
-        if(methodMod.contains(Modifier.PUBLIC)){
+        if (methodMod.contains(Modifier.PUBLIC)) {
             return ReifiedParameter.AccessModifier.PUBLIC;
         }
 
-        if(methodMod.contains(Modifier.PRIVATE)){
+        if (methodMod.contains(Modifier.PRIVATE)) {
             return ReifiedParameter.AccessModifier.PRIVATE;
         }
 
-        if(methodMod.contains(Modifier.PROTECTED)){
+        if (methodMod.contains(Modifier.PROTECTED)) {
             return ReifiedParameter.AccessModifier.PROTECTED;
         }
 
         return ReifiedParameter.AccessModifier.PACKAGE_PRIVATE;
     }
 
-    public List<JCTree.JCMethodDecl> findConstructors(JCTree tree){
+    public List<JCTree.JCMethodDecl> findConstructors(JCTree tree) {
         var clazz = (JCTree.JCClassDecl) tree;
         return clazz.getMembers()
                 .stream()
@@ -79,9 +77,13 @@ public class SimpleClasses {
         return constructor;
     }
 
-    public Type resolveClassType(JCTree.JCNewClass invocation, Env<AttrContext> env){
-        return simpleTypes.resolveGenericType(invocation.clazz, env)
-                .map(Symbol::asType)
-                .orElse(simpleTypes.resolveType(invocation, env));
+    public Type resolveClassType(Type.ClassType type) {
+        var typeArguments = type.getTypeArguments();
+        var classSymbol = (Symbol.ClassSymbol) type.asElement().baseSymbol();
+        if(typeArguments.isEmpty()){
+            return simpleTypes.erase(classSymbol.getTypeParameters().get(0));
+        }
+
+        return typeArguments.get(0);
     }
 }

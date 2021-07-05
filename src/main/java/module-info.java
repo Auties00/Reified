@@ -1,10 +1,8 @@
 open module it.auties.reified {
+    requires static com.google.auto.service;
+    requires static lombok;
     requires java.compiler;
     requires jdk.compiler;
-    requires com.google.auto.service;
-    requires lombok;
-    requires com.google.gson;
-    requires org.objectweb.asm;
 
     exports it.auties.reified.annotation;
     exports it.auties.reified.model;

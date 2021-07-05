@@ -2,29 +2,24 @@ package it.auties.reified.processor;
 
 import com.google.auto.service.AutoService;
 import com.sun.source.tree.Scope;
-import com.sun.source.util.JavacTask;
-import com.sun.source.util.Trees;
-import com.sun.tools.javac.api.JavacTaskImpl;
+import com.sun.tools.javac.api.JavacTrees;
+import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
+import com.sun.tools.javac.code.Types;
 import com.sun.tools.javac.comp.Attr;
 import com.sun.tools.javac.comp.Enter;
-import com.sun.tools.javac.comp.MemberEnter;
-import com.sun.tools.javac.comp.Resolve;
+import com.sun.tools.javac.comp.Todo;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.List;
-import com.sun.tools.javac.util.Log;
 import com.sun.tools.javac.util.Name;
 import com.sun.tools.javac.util.Names;
 import it.auties.reified.annotation.Reified;
+import it.auties.reified.model.ReifiedCall;
 import it.auties.reified.model.ReifiedParameter;
 import it.auties.reified.scanner.ClassInitializationScanner;
 import it.auties.reified.scanner.MethodInvocationScanner;
-import it.auties.reified.simplified.SimpleClasses;
-import it.auties.reified.simplified.SimpleMethods;
-import it.auties.reified.simplified.SimpleTrees;
-import it.auties.reified.simplified.SimpleTypes;
-import lombok.SneakyThrows;
+import it.auties.reified.simplified.*;
 
 import javax.annotation.processing.AbstractProcessor;
 import javax.annotation.processing.RoundEnvironment;
@@ -33,7 +28,10 @@ import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
-import java.util.*;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Objects;
+import java.util.Set;
 
 @SupportedAnnotationTypes(Reified.PATH)
 @SupportedSourceVersion(SourceVersion.RELEASE_11)
@@ -44,90 +42,44 @@ public class ReifiedProcessor extends AbstractProcessor {
     private SimpleClasses simpleClasses;
     private SimpleMethods simpleMethods;
     private Enter enter;
-    private MemberEnter memberEnter;
+    private Todo todo;
     private TreeMaker treeMaker;
-    private Log logger;
     private Set<ReifiedParameter> reifiedParameters;
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
-        try{
-            init();
-            var ext = processingEnv.getElementUtils().getTypeElement(Reified.PATH);
-            for (var element : roundEnv.getElementsAnnotatedWith(ext)) {
-                lookUpTypeParameter(element);
-            }
-
-            for (var reifiedParameter : reifiedParameters) {
-                processTypeParameter(reifiedParameter);
-            }
-
-            return true;
-        }catch (Exception exception){
-            logger.printRawLines(Log.WriterKind.ERROR, "Processing error: " +  exception.getMessage());
-            exception.printStackTrace();
-            throw new RuntimeException("Cannot process classes", exception);
-        }
+        init();
+        var ext = processingEnv.getElementUtils().getTypeElement(Reified.PATH);
+        lookup(roundEnv, ext);
+        processing();
+        return true;
     }
 
-    private void init(){
-        var task = (JavacTaskImpl) JavacTask.instance(processingEnv);
 
-        this.logger = Log.instance(task.getContext());
-        this.treeMaker = TreeMaker.instance(task.getContext());
-        this.enter = Enter.instance(task.getContext());
-        this.memberEnter = MemberEnter.instance(task.getContext());
+    private void init() {
+        var context = SimpleContext.resolveContext(processingEnv);
+        this.treeMaker = TreeMaker.instance(context);
+        this.enter = Enter.instance(context);
+        this.todo = Todo.instance(context);
 
-        var resolve = Resolve.instance(task.getContext());
-        var attr = Attr.instance(task.getContext());
-        var trees = Trees.instance(processingEnv);
-        this.simpleTrees = new SimpleTrees(trees);
-        this.simpleTypes = new SimpleTypes(processingEnv, attr, resolve);
+        var javacTrees = JavacTrees.instance(context);
+        this.simpleTrees = new SimpleTrees(javacTrees);
+
+        var attr = Attr.instance(context);
+        var types = Types.instance(context);
+        this.simpleTypes = new SimpleTypes(processingEnv, types, attr, enter);
         this.simpleClasses = new SimpleClasses(simpleTrees, simpleTypes);
 
-        var memberEnter = MemberEnter.instance(task.getContext());
-        this.simpleMethods = new SimpleMethods(simpleTypes, resolve, enter, memberEnter, attr);
+        var names = Names.instance(context);
+        this.simpleMethods = new SimpleMethods(simpleTypes, names, enter, attr);
         this.reifiedParameters = new HashSet<>();
     }
 
-    private void processTypeParameter(ReifiedParameter reifiedParameter) {
-        if(reifiedParameter.isClass()){
-            processClassParameter(reifiedParameter);
-            return;
-        }
-
-        processMethodParameter(reifiedParameter);
-    }
-
-    private void processMethodParameter(ReifiedParameter reifiedParameter) {
-        var methodScanner = new MethodInvocationScanner(reifiedParameter, simpleMethods, logger);
-        for(var methodInvocation : methodScanner.scan()) {
-            var caller = (JCTree.JCMethodInvocation) methodInvocation.caller();
-            var classType = (Type.ClassType) reifiedParameter.enclosingClassTree().sym.asType();
-            var classEnv = enter.getClassEnv(classType.tsym);
-            var methodEnv = memberEnter.getMethodEnv(methodInvocation.enclosingMethod(), classEnv);
-            var type = simpleMethods.resolveMethodType(caller, methodEnv);
-            logger.printRawLines(Log.WriterKind.WARNING, "Method type: " + type.toString());
-            caller.args = caller.args.prepend(treeMaker.ClassLiteral(type));
-        }
-    }
-
-    @SneakyThrows
-    private void processClassParameter(ReifiedParameter reifiedParameter) {
-        var classScanner = new ClassInitializationScanner(reifiedParameter, simpleMethods, logger, processingEnv.getElementUtils());
-        for(var classInitialization : classScanner.scan()) {
-            var caller = (JCTree.JCNewClass) classInitialization.caller();
-            var enclosingClass = (Type.ClassType) reifiedParameter.enclosingClassTree().sym.asType();
-            var enclosingClassEnv = enter.getClassEnv(enclosingClass.tsym);
-            var methodEnv = memberEnter.getMethodEnv(classInitialization.enclosingMethod(), enclosingClassEnv);
-            var type = simpleClasses.resolveClassType(caller, methodEnv);
-            logger.printRawLines(Log.WriterKind.WARNING, "Method type: " + type.toString());
-            caller.args = caller.args.prepend(treeMaker.ClassLiteral(type));
-        }
+    private void lookup(RoundEnvironment roundEnv, TypeElement ext) {
+        roundEnv.getElementsAnnotatedWith(ext).forEach(this::lookUpTypeParameter);
     }
 
     private void lookUpTypeParameter(Element typeParameter) {
-        logger.printRawLines(Log.WriterKind.WARNING, "Look up: " +  typeParameter.getSimpleName());
         var typePath = simpleTrees.toPath(typeParameter);
         var typeScope = simpleTrees.findScope(typePath);
 
@@ -160,5 +112,75 @@ public class ReifiedProcessor extends AbstractProcessor {
                 .isClass(classScoped)
                 .modifier(simpleClasses.findRealAccess(typeParentTree, typeParentScope, classScoped))
                 .build();
+    }
+
+    private void processing() {
+        reifiedParameters.forEach(this::processTypeParameter);
+    }
+
+    private void processTypeParameter(ReifiedParameter reifiedParameter) {
+        if (reifiedParameter.isClass()) {
+            processClassParameter(reifiedParameter);
+            return;
+        }
+
+       processMethodParameter(reifiedParameter);
+    }
+
+    private void processMethodParameter(ReifiedParameter reifiedParameter) {
+        var methodScanner = new MethodInvocationScanner(reifiedParameter, simpleMethods);
+        determineScanScope(reifiedParameter)
+                .stream()
+                .map(methodScanner::scan)
+                .flatMap(Collection::stream)
+                .forEach(this::processMethodParameter);
+    }
+
+    private void processMethodParameter(ReifiedCall<Symbol.MethodSymbol> methodInvocation) {
+        var caller = (JCTree.JCMethodInvocation) methodInvocation.callerExpression();
+        var callerSymbol = methodInvocation.caller();
+        var callerEnclosingSymbol = methodInvocation.callerEnclosingClass().sym;
+        var callerTopEnv = enter.getClassEnv(callerEnclosingSymbol.asType().asElement());
+        var type = simpleMethods.resolveMethodType(caller, callerSymbol, callerTopEnv);
+        caller.args = caller.args.prepend(treeMaker.ClassLiteral(type));
+    }
+
+    private void processClassParameter(ReifiedParameter reifiedParameter) {
+        var classScanner = new ClassInitializationScanner(reifiedParameter, simpleMethods, simpleTypes);
+        determineScanScope(reifiedParameter)
+                .stream()
+                .map(classScanner::scan)
+                .flatMap(Collection::stream)
+                .forEach(this::processClassParameter);
+    }
+
+    private void processClassParameter(ReifiedCall<Type.ClassType> classInitialization) {
+        var caller = (JCTree.JCNewClass) classInitialization.callerExpression();
+        var callerType = (Type.ClassType) classInitialization.caller();
+        var type = simpleClasses.resolveClassType(callerType);
+        caller.args = caller.args.prepend(treeMaker.ClassLiteral(type));
+    }
+
+    private List<JCTree.JCCompilationUnit> determineScanScope(ReifiedParameter reifiedParameter) {
+        return todo.stream()
+                .map(todo -> todo.toplevel)
+                .filter(unit -> checkClassScope(reifiedParameter, unit))
+                .collect(List.collector());
+    }
+
+    private boolean checkClassScope(ReifiedParameter reifiedParameter, JCTree.JCCompilationUnit unit) {
+        var paramPath = simpleTrees.toPath(reifiedParameter.enclosingClassElement());
+        var paramUnit = (JCTree.JCCompilationUnit) paramPath.getCompilationUnit();
+        switch (reifiedParameter.modifier()) {
+            case PUBLIC:
+                return true;
+            case PRIVATE:
+                return Objects.equals(unit, paramUnit);
+            case PROTECTED:
+            case PACKAGE_PRIVATE:
+                return Objects.equals(unit.packge, paramUnit.packge);
+            default:
+                throw new IllegalArgumentException("Unknown modifier: " + reifiedParameter.modifier());
+        }
     }
 }
