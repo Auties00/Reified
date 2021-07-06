@@ -16,7 +16,6 @@ import lombok.AllArgsConstructor;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
-import java.util.Objects;
 import java.util.Optional;
 
 import static com.sun.tools.javac.code.TypeTag.BOT;
@@ -39,22 +38,11 @@ public class SimpleTypes {
         return Assert.checkNonNull(type, "Reified Methods: Cannot compile as the type element associated with the class " + clazz.getName() + " doesn't exist!");
     }
 
-    public Optional<Symbol.ClassSymbol> resolveGenericType(JCTree.JCExpression expression, Env<AttrContext> env) {
-        if (!(expression instanceof JCTree.JCTypeApply)) {
-            return Optional.empty();
-        }
-
-        var genericType = (JCTree.JCTypeApply) expression;
-        var genericArgs = genericType.getTypeArguments();
-        return resolveFirstGenericType(genericArgs, env);
-    }
-
-    public Optional<Symbol.ClassSymbol> resolveFirstGenericType(List<JCTree.JCExpression> genericArgs, Env<AttrContext> env) {
-        if (genericArgs.isEmpty()) {
-            return Optional.empty();
-        }
-
-        return resolveGenericClassSymbol(genericArgs.get(0), env);
+    public Optional<Symbol.ClassSymbol> resolveFirstGenericType(Symbol.TypeVariableSymbol typeVariable, List<JCTree.JCExpression> genericArgs, Env<AttrContext> env) {
+        return genericArgs.stream()
+                .filter(arg -> arg.type.asElement().baseSymbol().equals(typeVariable))
+                .findFirst()
+                .flatMap(arg -> resolveGenericClassSymbol(arg, env));
     }
 
     public Optional<Symbol.ClassSymbol> resolveGenericClassSymbol(JCTree.JCExpression expression, Env<AttrContext> env) {
@@ -75,17 +63,21 @@ public class SimpleTypes {
     }
 
     public Optional<Type> resolveClassType(JCTree.JCExpression argument, JCTree.JCClassDecl enclosingClass) {
-        var env = enter.getClassEnv(enclosingClass.sym.asType().asElement());
+        var env = findClassEnv(enclosingClass);
         return Optional.ofNullable(attr.attribType(argument, env)).filter(this::isValid);
     }
 
-    public Optional<Type> resolveExpressionType(JCTree.JCExpression argument, JCTree.JCClassDecl enclosingClass) {
-        var env = enter.getClassEnv(enclosingClass.sym.asType().asElement());
+    public Optional<Type> resolveExpressionType(JCTree argument, JCTree.JCClassDecl enclosingClass) {
+        var env = findClassEnv(enclosingClass);
         return resolveExpressionType(argument, env);
     }
 
-    public Optional<Type> resolveExpressionType(JCTree.JCExpression argument, Env<AttrContext> methodEnv) {
+    public Optional<Type> resolveExpressionType(JCTree argument, Env<AttrContext> methodEnv) {
         return Optional.ofNullable(attr.attribExpr(argument, methodEnv)).filter(this::isValid);
+    }
+
+    private Env<AttrContext> findClassEnv(JCTree.JCClassDecl enclosingClass) {
+        return enter.getClassEnv(enclosingClass.sym.asType().asElement());
     }
 
     public boolean isValid(Type type) {

@@ -1,15 +1,11 @@
 package it.auties.reified.simplified;
 
-import com.sun.source.tree.Scope;
-import com.sun.source.tree.Tree;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
-import com.sun.tools.javac.comp.AttrContext;
-import com.sun.tools.javac.comp.Env;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.util.List;
-import it.auties.reified.model.ReifiedParameter;
+import it.auties.reified.model.ReifiedDeclaration;
 import lombok.AllArgsConstructor;
 
 import javax.lang.model.element.Modifier;
@@ -21,44 +17,43 @@ public class SimpleClasses {
     private final SimpleTrees simpleTrees;
     private final SimpleTypes simpleTypes;
 
-    public ReifiedParameter.AccessModifier findRealAccess(Tree tree, Scope scope, boolean classScoped) {
-        if (classScoped) {
-            return findRealAccess((JCTree.JCClassDecl) tree);
+    public ReifiedDeclaration.AccessModifier findRealAccess(JCTree.JCClassDecl clazz, JCTree.JCMethodDecl method) {
+        if (method == null) {
+            return findRealAccess(clazz);
         }
 
-        var clazz = simpleTrees.toTree(scope.getEnclosingClass());
-        var classMod = findRealAccess((JCTree.JCClassDecl) clazz);
-        var methodMod = ((JCTree.JCMethodDecl) tree).getModifiers().getFlags();
+        var classMod = findRealAccess(clazz);
+        var methodMod = method.getModifiers().getFlags();
         if (methodMod.contains(Modifier.PRIVATE)) {
-            return ReifiedParameter.AccessModifier.PRIVATE;
+            return ReifiedDeclaration.AccessModifier.PRIVATE;
         }
 
         if (methodMod.contains(Modifier.PROTECTED)) {
-            return ReifiedParameter.AccessModifier.PROTECTED;
+            return ReifiedDeclaration.AccessModifier.PROTECTED;
         }
 
-        if (classMod == ReifiedParameter.AccessModifier.PACKAGE_PRIVATE) {
-            return ReifiedParameter.AccessModifier.PACKAGE_PRIVATE;
+        if (classMod == ReifiedDeclaration.AccessModifier.PACKAGE_PRIVATE) {
+            return ReifiedDeclaration.AccessModifier.PACKAGE_PRIVATE;
         }
 
-        return ReifiedParameter.AccessModifier.PUBLIC;
+        return ReifiedDeclaration.AccessModifier.PUBLIC;
     }
 
-    private ReifiedParameter.AccessModifier findRealAccess(JCTree.JCClassDecl method) {
+    private ReifiedDeclaration.AccessModifier findRealAccess(JCTree.JCClassDecl method) {
         var methodMod = method.getModifiers().getFlags();
         if (methodMod.contains(Modifier.PUBLIC)) {
-            return ReifiedParameter.AccessModifier.PUBLIC;
+            return ReifiedDeclaration.AccessModifier.PUBLIC;
         }
 
         if (methodMod.contains(Modifier.PRIVATE)) {
-            return ReifiedParameter.AccessModifier.PRIVATE;
+            return ReifiedDeclaration.AccessModifier.PRIVATE;
         }
 
         if (methodMod.contains(Modifier.PROTECTED)) {
-            return ReifiedParameter.AccessModifier.PROTECTED;
+            return ReifiedDeclaration.AccessModifier.PROTECTED;
         }
 
-        return ReifiedParameter.AccessModifier.PACKAGE_PRIVATE;
+        return ReifiedDeclaration.AccessModifier.PACKAGE_PRIVATE;
     }
 
     public List<JCTree.JCMethodDecl> findConstructors(JCTree tree) {
@@ -77,13 +72,15 @@ public class SimpleClasses {
         return constructor;
     }
 
-    public Type resolveClassType(Type.ClassType type) {
+    public Type resolveClassType(Symbol.TypeVariableSymbol parameter, Type.ClassType type) {
         var typeArguments = type.getTypeArguments();
-        var classSymbol = (Symbol.ClassSymbol) type.asElement().baseSymbol();
         if(typeArguments.isEmpty()){
-            return simpleTypes.erase(classSymbol.getTypeParameters().get(0));
+            return simpleTypes.erase(parameter);
         }
 
-        return typeArguments.get(0);
+        return typeArguments.stream()
+                .filter(arg -> arg.asElement().baseSymbol().equals(parameter))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Cannot resolve class type: missing type parameter"));
     }
 }

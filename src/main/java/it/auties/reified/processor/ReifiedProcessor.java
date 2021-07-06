@@ -1,7 +1,6 @@
 package it.auties.reified.processor;
 
 import com.google.auto.service.AutoService;
-import com.sun.source.tree.Scope;
 import com.sun.tools.javac.api.JavacTrees;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
@@ -10,13 +9,16 @@ import com.sun.tools.javac.comp.Attr;
 import com.sun.tools.javac.comp.Enter;
 import com.sun.tools.javac.comp.Todo;
 import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.Name;
 import com.sun.tools.javac.util.Names;
 import it.auties.reified.annotation.Reified;
 import it.auties.reified.model.ReifiedCall;
-import it.auties.reified.model.ReifiedParameter;
+import it.auties.reified.model.ReifiedCandidate;
+import it.auties.reified.model.ReifiedDeclaration;
+import it.auties.reified.scanner.AnnotationScanner;
 import it.auties.reified.scanner.ClassInitializationScanner;
 import it.auties.reified.scanner.MethodInvocationScanner;
 import it.auties.reified.simplified.*;
@@ -28,33 +30,33 @@ import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.Set;
+import java.lang.reflect.Modifier;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @SupportedAnnotationTypes(Reified.PATH)
 @SupportedSourceVersion(SourceVersion.RELEASE_11)
 @AutoService(Reified.class)
 public class ReifiedProcessor extends AbstractProcessor {
-    private SimpleTrees simpleTrees;
     private SimpleTypes simpleTypes;
     private SimpleClasses simpleClasses;
     private SimpleMethods simpleMethods;
     private Enter enter;
     private Todo todo;
     private TreeMaker treeMaker;
-    private Set<ReifiedParameter> reifiedParameters;
+    private Set<ReifiedDeclaration> reifiedDeclarations;
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
+        if(roundEnv.processingOver()){
+            return true;
+        }
+
         init();
-        var ext = processingEnv.getElementUtils().getTypeElement(Reified.PATH);
-        lookup(roundEnv, ext);
+        lookup();
         processing();
         return true;
     }
-
 
     private void init() {
         var context = SimpleContext.resolveContext(processingEnv);
@@ -63,115 +65,150 @@ public class ReifiedProcessor extends AbstractProcessor {
         this.todo = Todo.instance(context);
 
         var javacTrees = JavacTrees.instance(context);
-        this.simpleTrees = new SimpleTrees(javacTrees);
-
+        var simpleTrees = new SimpleTrees(javacTrees);
         var attr = Attr.instance(context);
         var types = Types.instance(context);
+
         this.simpleTypes = new SimpleTypes(processingEnv, types, attr, enter);
         this.simpleClasses = new SimpleClasses(simpleTrees, simpleTypes);
 
         var names = Names.instance(context);
         this.simpleMethods = new SimpleMethods(simpleTypes, names, enter, attr);
-        this.reifiedParameters = new HashSet<>();
+        this.reifiedDeclarations = new HashSet<>();
     }
 
-    private void lookup(RoundEnvironment roundEnv, TypeElement ext) {
-        roundEnv.getElementsAnnotatedWith(ext).forEach(this::lookUpTypeParameter);
+    private void lookup() {
+        var annotationScanner = new AnnotationScanner();
+        var candidates = findAnnotatedTrees(annotationScanner);
+        this.reifiedDeclarations = parseCandidates(candidates);
     }
 
-    private void lookUpTypeParameter(Element typeParameter) {
-        var typePath = simpleTrees.toPath(typeParameter);
-        var typeScope = simpleTrees.findScope(typePath);
-
-        var typeParent = simpleTrees.findParent(typeScope);
-        var typeParentTree = simpleTrees.toTree(typeParent);
-        var typeParentPath = simpleTrees.toPath(typeParent);
-        var typeParentScope = simpleTrees.findScope(typeParentPath);
-
-        var classScoped = typeParentScope.getEnclosingMethod() == null;
-        var members = classScoped ? simpleClasses.findConstructors(typeParentTree) : List.of((JCTree.JCMethodDecl) typeParentTree);
-        members.forEach(method -> addParameter(typeParameter, method));
-
-        var enclosingClass = classScoped ? typeParentTree : simpleTrees.toTree(typeParentScope.getEnclosingClass());
-        var enclosingClassElement = classScoped ? typeParent : typeParentScope.getEnclosingClass();
-        var reifiedParameter = createReifiedParam(typeParentTree, (JCTree.JCClassDecl) enclosingClass, enclosingClassElement, typeParentScope, classScoped, members);
-        reifiedParameters.add(reifiedParameter);
+    private Set<ReifiedCandidate> findAnnotatedTrees(AnnotationScanner annotationScanner) {
+        return todo.stream()
+                .map(todo -> todo.toplevel)
+                .map(annotationScanner::scan)
+                .flatMap(Collection::stream)
+                .collect(Collectors.toSet());
     }
 
-    private void addParameter(Element typeParameter, JCTree.JCMethodDecl method) {
-        var param = treeMaker.at(method.pos).Param((Name) typeParameter.getSimpleName(), simpleTypes.createTypeWithParameter(Class.class, typeParameter), method.sym);
-        param.sym.adr = 0;
-        method.params = method.params.prepend(param);
+    private Set<ReifiedDeclaration> parseCandidates(Set<ReifiedCandidate> candidates) {
+        return candidates.stream()
+                .map(this::parseCandidate)
+                .collect(Collectors.toSet());
     }
 
-    private ReifiedParameter createReifiedParam(JCTree typeParentTree, JCTree.JCClassDecl enclosingClass, Element enclosingClassElement, Scope typeParentScope, boolean classScoped, List<JCTree.JCMethodDecl> members) {
-        return ReifiedParameter.builder()
-                .enclosingClassTree(enclosingClass)
-                .enclosingClassElement(enclosingClassElement)
-                .methods(members)
-                .isClass(classScoped)
-                .modifier(simpleClasses.findRealAccess(typeParentTree, typeParentScope, classScoped))
+    private ReifiedDeclaration parseCandidate(ReifiedCandidate candidate) {
+        return ReifiedDeclaration.builder()
+                .typeParameter(candidate.typeVariableSymbol())
+                .enclosingClassTree(candidate.enclosingClass())
+                .methods(findAndProcessMembers(candidate))
+                .isClass(isClassScoped(candidate))
+                .modifier(simpleClasses.findRealAccess(candidate.enclosingClass(), candidate.enclosingMethod()))
                 .build();
     }
 
-    private void processing() {
-        reifiedParameters.forEach(this::processTypeParameter);
+    private boolean isClassScoped(ReifiedCandidate candidate){
+        return candidate.enclosingMethod() == null;
     }
 
-    private void processTypeParameter(ReifiedParameter reifiedParameter) {
-        if (reifiedParameter.isClass()) {
-            processClassParameter(reifiedParameter);
+    private List<JCTree.JCMethodDecl> findAndProcessMembers(ReifiedCandidate candidate) {
+        if(isClassScoped(candidate)){
+            var localVariable = createLocalVariable(candidate.typeVariableSymbol(), candidate.enclosingClass());
+            var constructors = simpleClasses.findConstructors(candidate.enclosingClass());
+            constructors.forEach(constructor -> addParameterAndAssign(candidate.typeVariableSymbol(), candidate.enclosingClass(), localVariable, constructor));
+            return constructors;
+        }
+
+        addParameter(candidate.typeVariableSymbol(), candidate.enclosingMethod());
+        return List.of(candidate.enclosingMethod());
+    }
+
+    private void addParameterAndAssign(Element typeParameter, JCTree.JCClassDecl typeParentTree, JCTree.JCVariableDecl localVariable, JCTree.JCMethodDecl constructor) {
+        var parameter = addParameter(typeParameter, constructor);
+        var thisCall = treeMaker.This(typeParentTree.sym.asType());
+        var localVariableSelection = treeMaker.Select(thisCall, localVariable.getName());
+        var localVariableAssignment = treeMaker.Assign(localVariableSelection, treeMaker.Ident(parameter));
+
+        var localVariableStatement = treeMaker.at(constructor.pos).Exec(localVariableAssignment);
+        var newStats = new ArrayList<>(constructor.body.stats);
+        newStats.add(1, localVariableStatement);
+        constructor.body.stats = List.from(newStats);
+    }
+
+    private JCTree.JCVariableDecl createLocalVariable(Element typeParameter, JCTree.JCClassDecl enclosingClass) {
+        var localVariableName = (Name) typeParameter.getSimpleName();
+        var localVariableModifiers = treeMaker.Modifiers(Modifier.PRIVATE | Modifier.FINAL);
+        var localVariableType = treeMaker.Type(simpleTypes.createTypeWithParameter(Class.class, typeParameter));
+        var localVariable = treeMaker.at(enclosingClass.pos).VarDef(localVariableModifiers, localVariableName, localVariableType, null);
+        enclosingClass.defs = enclosingClass.defs.prepend(localVariable);
+        return localVariable;
+    }
+
+    private JCTree.JCVariableDecl addParameter(Element typeParameter, JCTree.JCMethodDecl method) {
+        var param = treeMaker.at(method.pos).Param((Name) typeParameter.getSimpleName(), simpleTypes.createTypeWithParameter(Class.class, typeParameter), method.sym);
+        param.sym.adr = 0;
+        method.params = method.params.prepend(param);
+        return param;
+    }
+
+    private void processing() {
+        reifiedDeclarations.forEach(this::processTypeParameter);
+    }
+
+    private void processTypeParameter(ReifiedDeclaration reifiedDeclaration) {
+        if (reifiedDeclaration.isClass()) {
+            processClassParameter(reifiedDeclaration);
             return;
         }
 
-       processMethodParameter(reifiedParameter);
+       processMethodParameter(reifiedDeclaration);
     }
 
-    private void processMethodParameter(ReifiedParameter reifiedParameter) {
-        var methodScanner = new MethodInvocationScanner(reifiedParameter, simpleMethods);
-        determineScanScope(reifiedParameter)
+    private void processMethodParameter(ReifiedDeclaration reifiedDeclaration) {
+        var methodScanner = new MethodInvocationScanner(reifiedDeclaration, simpleMethods);
+        determineScanScope(reifiedDeclaration)
                 .stream()
                 .map(methodScanner::scan)
                 .flatMap(Collection::stream)
-                .forEach(this::processMethodParameter);
+                .forEach(methodInvocation -> processMethodParameter(reifiedDeclaration.typeParameter(), methodInvocation));
     }
 
-    private void processMethodParameter(ReifiedCall<Symbol.MethodSymbol> methodInvocation) {
+    private void processMethodParameter(Symbol.TypeVariableSymbol typeVariable, ReifiedCall<Symbol.MethodSymbol> methodInvocation) {
         var caller = (JCTree.JCMethodInvocation) methodInvocation.callerExpression();
         var callerSymbol = methodInvocation.caller();
         var callerEnclosingSymbol = methodInvocation.callerEnclosingClass().sym;
         var callerTopEnv = enter.getClassEnv(callerEnclosingSymbol.asType().asElement());
-        var type = simpleMethods.resolveMethodType(caller, callerSymbol, callerTopEnv);
+        var type = simpleMethods.resolveMethodType(typeVariable, caller, callerSymbol, callerTopEnv);
         caller.args = caller.args.prepend(treeMaker.ClassLiteral(type));
     }
 
-    private void processClassParameter(ReifiedParameter reifiedParameter) {
-        var classScanner = new ClassInitializationScanner(reifiedParameter, simpleMethods, simpleTypes);
-        determineScanScope(reifiedParameter)
+    private void processClassParameter(ReifiedDeclaration reifiedDeclaration) {
+        var classScanner = new ClassInitializationScanner(reifiedDeclaration, simpleMethods, simpleTypes);
+        determineScanScope(reifiedDeclaration)
                 .stream()
                 .map(classScanner::scan)
                 .flatMap(Collection::stream)
-                .forEach(this::processClassParameter);
+                .forEach(classInit -> processClassParameter(reifiedDeclaration.typeParameter(), classInit));
     }
 
-    private void processClassParameter(ReifiedCall<Type.ClassType> classInitialization) {
+    private void processClassParameter(Symbol.TypeVariableSymbol typeVariable, ReifiedCall<Type.ClassType> classInitialization) {
         var caller = (JCTree.JCNewClass) classInitialization.callerExpression();
         var callerType = (Type.ClassType) classInitialization.caller();
-        var type = simpleClasses.resolveClassType(callerType);
+        var type = simpleClasses.resolveClassType(typeVariable, callerType);
         caller.args = caller.args.prepend(treeMaker.ClassLiteral(type));
     }
 
-    private List<JCTree.JCCompilationUnit> determineScanScope(ReifiedParameter reifiedParameter) {
+    private List<JCTree.JCCompilationUnit> determineScanScope(ReifiedDeclaration reifiedDeclaration) {
         return todo.stream()
                 .map(todo -> todo.toplevel)
-                .filter(unit -> checkClassScope(reifiedParameter, unit))
+                .filter(unit -> checkClassScope(reifiedDeclaration, unit))
                 .collect(List.collector());
     }
 
-    private boolean checkClassScope(ReifiedParameter reifiedParameter, JCTree.JCCompilationUnit unit) {
-        var paramPath = simpleTrees.toPath(reifiedParameter.enclosingClassElement());
-        var paramUnit = (JCTree.JCCompilationUnit) paramPath.getCompilationUnit();
-        switch (reifiedParameter.modifier()) {
+    private boolean checkClassScope(ReifiedDeclaration reifiedDeclaration, JCTree.JCCompilationUnit unit) {
+        var paramEnv = enter.getEnv(reifiedDeclaration.enclosingClassTree().sym);
+        var paramUnit = paramEnv.toplevel;
+        switch (reifiedDeclaration.modifier()) {
             case PUBLIC:
                 return true;
             case PRIVATE:
@@ -180,7 +217,7 @@ public class ReifiedProcessor extends AbstractProcessor {
             case PACKAGE_PRIVATE:
                 return Objects.equals(unit.packge, paramUnit.packge);
             default:
-                throw new IllegalArgumentException("Unknown modifier: " + reifiedParameter.modifier());
+                throw new IllegalArgumentException("Unknown modifier: " + reifiedDeclaration.modifier());
         }
     }
 }

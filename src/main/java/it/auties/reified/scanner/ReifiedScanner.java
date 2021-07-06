@@ -4,7 +4,7 @@ import com.sun.source.tree.ClassTree;
 import com.sun.source.util.TreeScanner;
 import com.sun.tools.javac.tree.JCTree;
 import it.auties.reified.model.ReifiedCall;
-import it.auties.reified.model.ReifiedParameter;
+import it.auties.reified.model.ReifiedDeclaration;
 import it.auties.reified.simplified.SimpleMethods;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -19,7 +19,7 @@ import java.util.Set;
 @Data
 @Accessors(fluent = true)
 public abstract class ReifiedScanner<R> extends TreeScanner<Void, Void> {
-    private final ReifiedParameter parameter;
+    private final ReifiedDeclaration parameter;
     private final SimpleMethods simpleMethods;
     private Set<ReifiedCall<R>> results;
     private JCTree.JCClassDecl enclosingClass;

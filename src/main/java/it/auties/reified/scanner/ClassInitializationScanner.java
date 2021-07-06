@@ -3,14 +3,14 @@ package it.auties.reified.scanner;
 import com.sun.source.tree.NewClassTree;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.tree.JCTree;
-import it.auties.reified.model.ReifiedParameter;
+import it.auties.reified.model.ReifiedDeclaration;
 import it.auties.reified.simplified.SimpleMethods;
 import it.auties.reified.simplified.SimpleTypes;
 
 public class ClassInitializationScanner extends ReifiedScanner<Type.ClassType> {
     private final SimpleTypes simpleTypes;
 
-    public ClassInitializationScanner(ReifiedParameter parameter, SimpleMethods simpleMethods, SimpleTypes simpleTypes) {
+    public ClassInitializationScanner(ReifiedDeclaration parameter, SimpleMethods simpleMethods, SimpleTypes simpleTypes) {
         super(parameter, simpleMethods);
         this.simpleTypes = simpleTypes;
     }

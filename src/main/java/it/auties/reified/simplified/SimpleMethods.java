@@ -15,7 +15,6 @@ import it.auties.reified.scanner.VariableScanner;
 import lombok.AllArgsConstructor;
 import lombok.NonNull;
 
-import java.util.Objects;
 import java.util.Optional;
 
 import static com.sun.tools.javac.code.Kinds.Kind.PCK;
@@ -141,23 +140,22 @@ public class SimpleMethods {
         return Optional.empty();
     }
 
-    public Type resolveMethodType(JCTree.JCMethodInvocation invocation, Symbol.MethodSymbol invoked, Env<AttrContext> env) {
+    public Type resolveMethodType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCMethodInvocation invocation, Symbol.MethodSymbol invoked, Env<AttrContext> env) {
         var args = invocation.getTypeArguments();
         if (args != null && !args.isEmpty()) {
-            return simpleTypes.resolveFirstGenericType(args, env)
+            return simpleTypes.resolveFirstGenericType(typeVariable, args, env)
                     .map(Symbol::asType)
                     .orElseThrow(() -> new IllegalArgumentException("Cannot deduce type from generic method call with explicit type"));
         }
 
         var returnType = invoked.getReturnType();
-        var paramSymbol = invoked.getTypeParameters().get(0);
-        if(paramSymbol.asType().equals(returnType)){
+        if(typeVariable.asType().equals(returnType)){
             return simpleTypes.resolveExpressionType(invocation, env)
                     .orElseThrow(() -> new IllegalArgumentException("Cannot deduce type from generic method call with matching return type"));
         }
 
-        var parametrizedArgs = matchTypeParamToTypedArg(invocation, invoked, env, paramSymbol);
-        return simpleTypes.commonType(parametrizedArgs).orElse(simpleTypes.erase(paramSymbol));
+        var parametrizedArgs = matchTypeParamToTypedArg(invocation, invoked, env, typeVariable);
+        return simpleTypes.commonType(parametrizedArgs).orElse(simpleTypes.erase(typeVariable));
     }
 
     private List<Type> matchTypeParamToTypedArg(JCTree.JCMethodInvocation invocation, Symbol.MethodSymbol invoked, Env<AttrContext> env, Symbol.TypeVariableSymbol paramSymbol) {
