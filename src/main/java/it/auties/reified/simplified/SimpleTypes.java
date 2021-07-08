@@ -11,17 +11,23 @@ import com.sun.tools.javac.comp.Env;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.util.Assert;
 import com.sun.tools.javac.util.List;
+import it.auties.reified.annotation.Reified;
 import lombok.AllArgsConstructor;
+import lombok.Data;
 
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.TypeMirror;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.Optional;
 
 import static com.sun.tools.javac.code.TypeTag.BOT;
 import static com.sun.tools.javac.code.TypeTag.VOID;
 
 @AllArgsConstructor
+@Data
 public class SimpleTypes {
     private final ProcessingEnvironment environment;
     private final Types types;
@@ -29,8 +35,12 @@ public class SimpleTypes {
     private final Enter enter;
 
     public Type createTypeWithParameter(Class<?> clazz, Element parameter) {
+        return createTypeWithParameter(clazz, parameter.asType());
+    }
+
+    public Type createTypeWithParameter(Class<?> clazz, TypeMirror parameter) {
         var types = environment.getTypeUtils();
-        return (Type) types.getDeclaredType(toTypeElement(clazz), parameter.asType());
+        return (Type) types.getDeclaredType(toTypeElement(clazz), parameter);
     }
 
     public TypeElement toTypeElement(Class<?> clazz) {
@@ -38,50 +48,17 @@ public class SimpleTypes {
         return Assert.checkNonNull(type, "Reified Methods: Cannot compile as the type element associated with the class " + clazz.getName() + " doesn't exist!");
     }
 
-    public Optional<Symbol.ClassSymbol> resolveFirstGenericType(Symbol.TypeVariableSymbol typeVariable, List<JCTree.JCExpression> genericArgs, Env<AttrContext> env) {
-        return genericArgs.stream()
-                .filter(arg -> arg.type.asElement().baseSymbol().equals(typeVariable))
-                .findFirst()
-                .flatMap(arg -> resolveGenericClassSymbol(arg, env));
-    }
-
-    public Optional<Symbol.ClassSymbol> resolveGenericClassSymbol(JCTree.JCExpression expression, Env<AttrContext> env) {
-        if (expression instanceof JCTree.JCIdent) {
-            var sym = resolveClassSymbol((JCTree.JCIdent) expression, env);
-            return Optional.of(sym);
-        }
-
-        if (expression instanceof JCTree.JCTypeApply) {
-            return resolveGenericClassSymbol((JCTree.JCExpression) ((JCTree.JCTypeApply) expression).getType(), env);
-        }
-
-        return Optional.empty();
-    }
-
-    private Symbol.ClassSymbol resolveClassSymbol(JCTree.JCIdent expression, Env<AttrContext> env) {
-        return (Symbol.ClassSymbol) attr.attribIdent(expression, env);
-    }
-
-    public Optional<Type> resolveClassType(JCTree.JCExpression argument, JCTree.JCClassDecl enclosingClass) {
+    public Optional<Type> resolveClassType(JCTree argument, JCTree.JCClassDecl enclosingClass) {
         var env = findClassEnv(enclosingClass);
         return Optional.ofNullable(attr.attribType(argument, env)).filter(this::isValid);
     }
 
-    public Optional<Type> resolveExpressionType(JCTree argument, JCTree.JCClassDecl enclosingClass) {
-        var env = findClassEnv(enclosingClass);
-        return resolveExpressionType(argument, env);
-    }
-
-    public Optional<Type> resolveExpressionType(JCTree argument, Env<AttrContext> methodEnv) {
-        return Optional.ofNullable(attr.attribExpr(argument, methodEnv)).filter(this::isValid);
-    }
-
-    private Env<AttrContext> findClassEnv(JCTree.JCClassDecl enclosingClass) {
-        return enter.getClassEnv(enclosingClass.sym.asType().asElement());
-    }
-
     public boolean isValid(Type type) {
         return !type.isErroneous();
+    }
+
+    public Env<AttrContext> findClassEnv(JCTree.JCClassDecl enclosingClass) {
+        return enter.getClassEnv(enclosingClass.sym.asType().asElement());
     }
 
     public Optional<Type> commonType(List<Type> input) {
@@ -98,6 +75,72 @@ public class SimpleTypes {
         return types.boxedTypeOrType(type);
     }
 
+    public boolean isGeneric(Type type){
+        return type instanceof Type.TypeVar;
+    }
+
+    public Type resolveWildCard(Type type){
+        if(type instanceof Type.WildcardType){
+            return ((Type.WildcardType) type).type;
+        }
+
+        return type;
+    }
+
+    public List<Type> matchTypeParamToTypedArg(Symbol.TypeVariableSymbol typeParameter, List<Symbol.TypeVariableSymbol> invoked, List<JCTree.JCExpression> arguments, JCTree.JCClassDecl enclosingClass) {
+        return invoked.stream()
+                .filter(typeParameter::equals)
+                .map(invoked::indexOf)
+                .map(arguments::get)
+                .map(candidate -> resolveClassType(candidate, enclosingClass))
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .map(this::boxed)
+                .collect(List.collector());
+    }
+
+
+    public List<JCTree.JCExpression> flattenGenericType(JCTree.JCExpression type){
+        if(!(type instanceof JCTree.JCTypeApply)){
+            return List.of(type);
+        }
+
+        var apply = (JCTree.JCTypeApply) type;
+        return apply.arguments.stream()
+                .map(this::flattenGenericType)
+                .flatMap(Collection::stream)
+                .collect(List.collector());
+    }
+
+    public List<Type> flattenGenericType(Type type){
+        if(!type.isParameterized()){
+            return List.of(type);
+        }
+
+        return flattenGenericType(type.getTypeArguments());
+    }
+
+    public List<Type> flattenGenericType(List<Type> types){
+        return types.stream()
+                .map(this::flattenGenericType)
+                .flatMap(Collection::stream)
+                .collect(List.collector());
+    }
+
+    public Optional<Type> resolveImplicitType(Iterator<Type> invocationIterator, Iterator<Type> genericIterator, Symbol.TypeVariableSymbol typeVariable){
+        while (invocationIterator.hasNext() && genericIterator.hasNext()){
+            var invocation = invocationIterator.next();
+            var generic = genericIterator.next();
+            if (!generic.tsym.equals(typeVariable)) {
+                continue;
+            }
+
+            return Optional.of(invocation);
+        }
+
+        return Optional.empty();
+    }
+
     public Type resolveImplicitType(JCTree.JCVariableDecl variable, Env<AttrContext> env) {
         var initType = attr.attribExpr(variable.init, env);
         if (initType.hasTag(BOT) || initType.hasTag(VOID)) {
@@ -105,5 +148,9 @@ public class SimpleTypes {
         }
 
         return types.upward(initType, types.captures(initType));
+    }
+
+    public boolean isReified(Symbol typeSymbol) {
+       return typeSymbol.getAnnotation(Reified.class) != null;
     }
 }

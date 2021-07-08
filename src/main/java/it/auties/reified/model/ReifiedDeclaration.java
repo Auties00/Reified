@@ -15,7 +15,7 @@ import lombok.experimental.Accessors;
 @ToString
 public class ReifiedDeclaration {
     @NonNull Symbol.TypeVariableSymbol typeParameter;
-    @NonNull JCTree.JCClassDecl enclosingClassTree;
+    @NonNull JCTree.JCClassDecl enclosingClass;
     @NonNull List<JCTree.JCMethodDecl> methods;
     @NonNull AccessModifier modifier;
     boolean isClass;

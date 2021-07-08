@@ -5,10 +5,12 @@ import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.tree.JCTree;
 import it.auties.reified.model.ReifiedDeclaration;
 import it.auties.reified.simplified.SimpleMethods;
+import it.auties.reified.simplified.SimpleTrees;
+import it.auties.reified.simplified.SimpleTypes;
 
 public class MethodInvocationScanner extends ReifiedScanner<Symbol.MethodSymbol> {
-    public MethodInvocationScanner(ReifiedDeclaration parameter, SimpleMethods simpleMethods) {
-        super(parameter, simpleMethods);
+    public MethodInvocationScanner(ReifiedDeclaration parameter, SimpleMethods simpleMethods, SimpleTypes simpleTypes) {
+        super(parameter, simpleMethods, simpleTypes);
     }
 
     @Override
@@ -21,7 +23,6 @@ public class MethodInvocationScanner extends ReifiedScanner<Symbol.MethodSymbol>
             return super.visitMethodInvocation(node, unused);
         }
 
-        System.err.println("Method invocation found: " + node);
         results().add(buildResultCall(rawNode, calling.get()));
         return super.visitMethodInvocation(node, unused);
     }

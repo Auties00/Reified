@@ -2,14 +2,10 @@ package it.auties.reified.simplified;
 
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
-import com.sun.tools.javac.comp.Attr;
-import com.sun.tools.javac.comp.AttrContext;
-import com.sun.tools.javac.comp.Enter;
-import com.sun.tools.javac.comp.Env;
+import com.sun.tools.javac.comp.*;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.util.Assert;
-import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.Names;
 import it.auties.reified.scanner.VariableScanner;
 import lombok.AllArgsConstructor;
@@ -72,7 +68,12 @@ public class SimpleMethods {
 
         if (selected instanceof JCTree.JCFieldAccess) {
             var innerAccess = (JCTree.JCFieldAccess) selected;
-            return resolveClassSymbol(innerAccess, classSymbol, enclosingClass);
+
+            var innerIdentity = innerAccess.getIdentifier();
+            var innerEnclosing = resolveClassSymbol(innerAccess, classSymbol, enclosingClass);
+            var resolvedMember = innerEnclosing.members().findFirst(innerIdentity);
+
+            return resolvedMember.asType().asElement().baseSymbol();
         }
 
         if (selected instanceof JCTree.JCMethodInvocation) {
@@ -140,34 +141,57 @@ public class SimpleMethods {
         return Optional.empty();
     }
 
-    public Type resolveMethodType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCMethodInvocation invocation, Symbol.MethodSymbol invoked, Env<AttrContext> env) {
+    public Type resolveMethodType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCMethodInvocation invocation, Symbol.MethodSymbol invoked, JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCStatement enclosingStatement) {
         var args = invocation.getTypeArguments();
         if (args != null && !args.isEmpty()) {
-            return simpleTypes.resolveFirstGenericType(typeVariable, args, env)
-                    .map(Symbol::asType)
-                    .orElseThrow(() -> new IllegalArgumentException("Cannot deduce type from generic method call with explicit type"));
+            var deduced = simpleTypes.matchTypeParamToTypedArg(typeVariable, invoked.getTypeParameters(), args, enclosingClass);
+            if(deduced.isEmpty()){
+                throw new IllegalArgumentException("Cannot resolve method type for explicit type variable");
+            }
+
+            return deduced.get(0);
         }
 
         var returnType = invoked.getReturnType();
         if(typeVariable.asType().equals(returnType)){
-            return simpleTypes.resolveExpressionType(invocation, env)
+            return simpleTypes.resolveClassType(invocation, enclosingClass)
                     .orElseThrow(() -> new IllegalArgumentException("Cannot deduce type from generic method call with matching return type"));
         }
 
-        var parametrizedArgs = matchTypeParamToTypedArg(invocation, invoked, env, typeVariable);
-        return simpleTypes.commonType(parametrizedArgs).orElse(simpleTypes.erase(typeVariable));
-    }
+        var parametrizedArgs = simpleTypes.matchTypeParamToTypedArg(typeVariable, invoked.getTypeParameters(), invocation.getArguments(), enclosingClass);
+        var parameterType = simpleTypes.commonType(parametrizedArgs);
+        if(parameterType.isPresent()){
+            return parameterType.get();
+        }
 
-    private List<Type> matchTypeParamToTypedArg(JCTree.JCMethodInvocation invocation, Symbol.MethodSymbol invoked, Env<AttrContext> env, Symbol.TypeVariableSymbol paramSymbol) {
-        return invoked.getParameters()
-                .stream()
-                .filter(candidate -> paramSymbol.asType().equals(candidate.asType()))
-                .map(invoked.getParameters()::indexOf)
-                .map(index -> invocation.getArguments().get(index))
-                .map(candidate -> simpleTypes.resolveExpressionType(candidate, env))
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .map(simpleTypes::boxed)
-                .collect(List.collector());
+        var flatReturnType = simpleTypes.flattenGenericType(returnType).iterator();
+        if (enclosingStatement instanceof JCTree.JCReturn) {
+            var methodReturnType = simpleTypes.resolveClassType(enclosingMethod.getReturnType(), enclosingClass);
+            if (methodReturnType.isEmpty()) {
+                return simpleTypes.erase(typeVariable);
+            }
+
+            var flatMethodReturn = simpleTypes.flattenGenericType(methodReturnType.get()).iterator();
+            return simpleTypes.resolveImplicitType(flatMethodReturn, flatReturnType, typeVariable)
+                    .orElse(simpleTypes.erase(typeVariable));
+        }
+
+        if (enclosingStatement instanceof JCTree.JCVariableDecl) {
+            var variable = (JCTree.JCVariableDecl) enclosingStatement;
+            if(variable.isImplicitlyTyped()){
+                return simpleTypes.erase(typeVariable);
+            }
+
+            var variableType = simpleTypes.resolveClassType(variable.vartype, enclosingClass);
+            if (variableType.isEmpty()) {
+                return simpleTypes.erase(typeVariable);
+            }
+
+            var flatVariableType = simpleTypes.flattenGenericType(variableType.get()).iterator();
+            return simpleTypes.resolveImplicitType(flatVariableType, flatReturnType, typeVariable)
+                    .orElse(simpleTypes.erase(typeVariable));
+        }
+
+        return simpleTypes.erase(typeVariable);
     }
 }

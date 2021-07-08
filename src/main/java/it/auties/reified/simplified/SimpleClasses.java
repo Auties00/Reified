@@ -14,7 +14,6 @@ import static com.sun.tools.javac.code.Flags.GENERATEDCONSTR;
 
 @AllArgsConstructor
 public class SimpleClasses {
-    private final SimpleTrees simpleTrees;
     private final SimpleTypes simpleTypes;
 
     public ReifiedDeclaration.AccessModifier findRealAccess(JCTree.JCClassDecl clazz, JCTree.JCMethodDecl method) {
@@ -72,15 +71,51 @@ public class SimpleClasses {
         return constructor;
     }
 
-    public Type resolveClassType(Symbol.TypeVariableSymbol parameter, Type.ClassType type) {
-        var typeArguments = type.getTypeArguments();
-        if(typeArguments.isEmpty()){
-            return simpleTypes.erase(parameter);
+    public Type resolveClassType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCNewClass invocation, Type.ClassType invoked, JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCStatement enclosingStatement) {
+        var args = simpleTypes.flattenGenericType(invocation.clazz);
+        if (args != null && !args.isEmpty()) {
+            var deduced = simpleTypes.matchTypeParamToTypedArg(typeVariable, invoked.asElement().baseSymbol().getTypeParameters(), args, enclosingClass);
+            if(deduced.isEmpty()){
+                throw new IllegalArgumentException("Cannot resolve class type for explicit type variable");
+            }
+
+            return deduced.get(0);
         }
 
-        return typeArguments.stream()
-                .filter(arg -> arg.asElement().baseSymbol().equals(parameter))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cannot resolve class type: missing type parameter"));
+        var parametrizedArgs = simpleTypes.matchTypeParamToTypedArg(typeVariable, invoked.getParameterTypes().stream().map(e -> (Symbol.TypeVariableSymbol) e.tsym.baseSymbol()).collect(List.collector()), invocation.getArguments(), enclosingClass);
+        var parameterType = simpleTypes.commonType(parametrizedArgs);
+        if(parameterType.isPresent()){
+            return parameterType.get();
+        }
+
+        var flatReturnType = simpleTypes.flattenGenericType(invoked.getTypeArguments()).iterator();
+        if (enclosingStatement instanceof JCTree.JCReturn) {
+            var methodReturnType = simpleTypes.resolveClassType(enclosingMethod.getReturnType(), enclosingClass);
+            if (methodReturnType.isEmpty()) {
+                return simpleTypes.erase(typeVariable);
+            }
+
+            var flatMethodReturn = simpleTypes.flattenGenericType(methodReturnType.get()).iterator();
+            return simpleTypes.resolveImplicitType(flatMethodReturn, flatReturnType, typeVariable)
+                    .orElse(simpleTypes.erase(typeVariable));
+        }
+
+        if (enclosingStatement instanceof JCTree.JCVariableDecl) {
+            var variable = (JCTree.JCVariableDecl) enclosingStatement;
+            if(variable.isImplicitlyTyped()){
+                return simpleTypes.erase(typeVariable);
+            }
+
+            var variableType = simpleTypes.resolveClassType(variable.vartype, enclosingClass);
+            if (variableType.isEmpty()) {
+                return simpleTypes.erase(typeVariable);
+            }
+
+            var flatVariableType = simpleTypes.flattenGenericType(variableType.get()).iterator();
+            return simpleTypes.resolveImplicitType(flatVariableType, flatReturnType, typeVariable)
+                    .orElse(simpleTypes.erase(typeVariable));
+        }
+
+        return simpleTypes.erase(typeVariable);
     }
 }
