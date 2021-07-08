@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.github.auties00</groupId>
@@ -24,8 +26,7 @@
     <scm>
         <url>https://github.com/Auties00/reified/tree/master</url>
         <connection>scm:git:https://github.com/Auties00/reified.git</connection>
-      <tag>HEAD</tag>
-  </scm>
+    </scm>
     <distributionManagement>
         <snapshotRepository>
             <id>ossrh</id>
@@ -125,34 +126,6 @@
                         <arg>--add-exports</arg>
                         <arg>jdk.compiler/com.sun.tools.javac.processing=it.auties.reified</arg>
                     </compilerArgs>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-javadoc-plugin</artifactId>
-                <version>3.2.0</version>
-                <executions>
-                    <execution>
-                        <phase>prepare-package</phase>
-                        <goals>
-                            <goal>jar</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <additionalOptions>
-                        <additionalOption>--add-exports jdk.compiler/com.sun.tools.javac.tree=it.auties.reified</additionalOption>
-                        <additionalOption>--add-exports jdk.compiler/com.sun.tools.javac.util=it.auties.reified</additionalOption>
-                        <additionalOption>--add-exports jdk.compiler/com.sun.tools.javac.code=it.auties.reified</additionalOption>
-                        <additionalOption>--add-exports jdk.compiler/com.sun.tools.javac.api=it.auties.reified</additionalOption>
-                        <additionalOption>--add-exports jdk.compiler/com.sun.tools.javac.comp=it.auties.reified</additionalOption>
-                        <additionalOption>--add-exports jdk.compiler/com.sun.tools.javac.jvm=it.auties.reified</additionalOption>
-                        <additionalOption>--add-exports jdk.compiler/com.sun.tools.javac.processing=it.auties.reified</additionalOption>
-                    </additionalOptions>
-                    <release>11</release>
-                    <failOnError>true</failOnError>
-                    <debug>true</debug>
-                    <verbose>true</verbose>
                 </configuration>
             </plugin>
             <plugin>
