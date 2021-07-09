@@ -1,5 +1,4 @@
 open module it.auties.reified {
-    requires static com.google.auto.service;
     requires static lombok;
     requires java.compiler;
     requires jdk.compiler;

@@ -1,7 +1,5 @@
 package it.auties.reified.processor;
 
-import com.google.auto.service.AutoService;
-import com.sun.tools.javac.api.JavacTrees;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.Types;
@@ -36,7 +34,6 @@ import java.util.*;
 
 @SupportedAnnotationTypes(Reified.PATH)
 @SupportedSourceVersion(SourceVersion.RELEASE_11)
-@AutoService(Reified.class)
 public class ReifiedProcessor extends AbstractProcessor {
     private SimpleTypes simpleTypes;
     private SimpleClasses simpleClasses;
@@ -60,7 +57,7 @@ public class ReifiedProcessor extends AbstractProcessor {
             return true;
         }catch (Throwable throwable){
             throwable.printStackTrace();
-            return false;
+            throw new RuntimeException("Cannot compile", throwable);
         }
     }
 
