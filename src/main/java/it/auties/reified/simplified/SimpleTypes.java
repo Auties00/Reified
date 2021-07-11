@@ -117,6 +117,7 @@ public class SimpleTypes {
         return IntStream.range(0, parameters.size())
                 .filter(index -> Objects.equals(typeParameter, parameters.get(index).asType().asElement()))
                 .mapToObj(arguments::get)
+                .map(this::boxed)
                 .collect(List.collector());
     }
 
