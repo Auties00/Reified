@@ -67,6 +67,10 @@ public class SimpleTypes {
         return enter.getClassEnv(enclosingClass.sym.asType().asElement());
     }
 
+    public Env<AttrContext> findClassEnv(Type.ClassType type) {
+        return enter.getClassEnv(type.asElement());
+    }
+
     public Optional<Type> commonType(List<Type> input) {
         return Optional.ofNullable(types.lub(input))
                 .filter(type -> type.getTag() != TypeTag.BOT)

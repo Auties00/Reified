@@ -3,11 +3,9 @@ package it.auties.reified.processor;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.Types;
-import com.sun.tools.javac.comp.Attr;
-import com.sun.tools.javac.comp.Enter;
-import com.sun.tools.javac.comp.Resolve;
-import com.sun.tools.javac.comp.Todo;
+import com.sun.tools.javac.comp.*;
 import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.Assert;
 import com.sun.tools.javac.util.List;
@@ -32,6 +30,7 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
 import java.lang.reflect.Modifier;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @SupportedAnnotationTypes(Reified.PATH)
 @SupportedSourceVersion(SourceVersion.RELEASE_11)
@@ -39,7 +38,6 @@ public class ReifiedProcessor extends AbstractProcessor {
     private SimpleTypes simpleTypes;
     private SimpleClasses simpleClasses;
     private SimpleMethods simpleMethods;
-    private Enter enter;
     private Todo todo;
     private TreeMaker treeMaker;
     private List<ReifiedDeclaration> reifiedDeclarations;
@@ -58,16 +56,16 @@ public class ReifiedProcessor extends AbstractProcessor {
             return true;
         }catch (Throwable throwable){
             throwable.printStackTrace();
-            throw new RuntimeException("Cannot compile", throwable);
+            throw new RuntimeException(throwable.getMessage(), throwable);
         }
     }
 
     private void init() {
         var context = SimpleContext.resolveContext(processingEnv);
         this.treeMaker = TreeMaker.instance(context);
-        this.enter = Enter.instance(context);
         this.todo = Todo.instance(context);
 
+        var enter = Enter.instance(context);
         var attr = Attr.instance(context);
         var types = Types.instance(context);
         var names = Names.instance(context);
@@ -86,7 +84,7 @@ public class ReifiedProcessor extends AbstractProcessor {
 
     private List<ReifiedCandidate> findAnnotatedTrees(AnnotationScanner annotationScanner) {
         return todo.stream()
-                .map(todo -> todo.toplevel)
+                .map(todo -> todo.tree)
                 .map(annotationScanner::scan)
                 .flatMap(Collection::stream)
                 .collect(List.collector())
@@ -275,24 +273,23 @@ public class ReifiedProcessor extends AbstractProcessor {
         return typeSymbol.owner instanceof Symbol.ClassSymbol ? null : method;
     }
 
-    private List<JCTree.JCCompilationUnit> findCompilationUnits(ReifiedDeclaration reifiedDeclaration) {
+    private Set<JCTree> findCompilationUnits(ReifiedDeclaration reifiedDeclaration) {
         return todo.stream()
-                .map(todo -> todo.toplevel)
                 .filter(unit -> checkClassScope(reifiedDeclaration, unit))
-                .collect(List.collector());
+                .map(env -> env.tree)
+                .collect(Collectors.toUnmodifiableSet());
     }
 
-    private boolean checkClassScope(ReifiedDeclaration reifiedDeclaration, JCTree.JCCompilationUnit unit) {
-        var paramEnv = enter.getEnv(reifiedDeclaration.enclosingClass().sym);
-        var paramUnit = paramEnv.toplevel;
+    private boolean checkClassScope(ReifiedDeclaration reifiedDeclaration, Env<AttrContext> unit) {
+        var paramEnv = simpleTypes.findClassEnv(reifiedDeclaration.enclosingClass());
         switch (reifiedDeclaration.modifier()) {
             case PUBLIC:
                 return true;
             case PRIVATE:
-                return Objects.equals(unit, paramUnit);
+                return Objects.equals(unit.toplevel, paramEnv.toplevel);
             case PROTECTED:
             case PACKAGE_PRIVATE:
-                return Objects.equals(unit.packge, paramUnit.packge);
+                return Objects.equals(unit.toplevel.packge, paramEnv.toplevel.packge);
             default:
                 throw new IllegalArgumentException("Unknown modifier: " + reifiedDeclaration.modifier());
         }
