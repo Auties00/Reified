@@ -5,6 +5,7 @@ import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.Types;
 import com.sun.tools.javac.comp.Attr;
 import com.sun.tools.javac.comp.Enter;
+import com.sun.tools.javac.comp.Resolve;
 import com.sun.tools.javac.comp.Todo;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeMaker;
@@ -69,11 +70,11 @@ public class ReifiedProcessor extends AbstractProcessor {
 
         var attr = Attr.instance(context);
         var types = Types.instance(context);
+        var names = Names.instance(context);
+        var resolve = Resolve.instance(context);
 
         this.simpleTypes = new SimpleTypes(processingEnv, types, attr, enter);
-        this.simpleClasses = new SimpleClasses(simpleTypes);
-
-        var names = Names.instance(context);
+        this.simpleClasses = new SimpleClasses(simpleTypes, resolve);
         this.simpleMethods = new SimpleMethods(simpleTypes, names, enter, attr);
     }
 
@@ -132,8 +133,17 @@ public class ReifiedProcessor extends AbstractProcessor {
 
         var localVariableStatement = treeMaker.at(constructor.pos).Exec(localVariableAssignment);
         var newStats = new ArrayList<>(constructor.body.stats);
-        newStats.add(1, localVariableStatement);
+        addStatement(localVariableStatement, newStats);
         constructor.body.stats = List.from(newStats);
+    }
+
+    private void addStatement(JCTree.JCExpressionStatement localVariableStatement, java.util.List<JCTree.JCStatement> newStats) {
+        if(newStats.isEmpty()){
+            newStats.add(localVariableStatement);
+            return;
+        }
+
+        newStats.add(1, localVariableStatement);
     }
 
     private JCTree.JCVariableDecl createLocalVariable(Element typeParameter, JCTree.JCClassDecl enclosingClass) {
@@ -153,7 +163,7 @@ public class ReifiedProcessor extends AbstractProcessor {
         method.params = method.params.prepend(param);
 
         var methodSymbol = (Symbol.MethodSymbol) method.sym;
-        methodSymbol.params = methodSymbol.params.append(param.sym);
+        methodSymbol.params = methodSymbol.params.prepend(param.sym);
 
         var methodType = methodSymbol.type.asMethodType();
         methodType.argtypes = methodType.argtypes.prepend(paramType);

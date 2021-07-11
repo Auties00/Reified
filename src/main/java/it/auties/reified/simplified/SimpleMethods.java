@@ -6,11 +6,14 @@ import com.sun.tools.javac.comp.*;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.util.Assert;
+import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.Names;
 import it.auties.reified.scanner.VariableScanner;
 import lombok.AllArgsConstructor;
 import lombok.NonNull;
 
+import java.util.Iterator;
+import java.util.Objects;
 import java.util.Optional;
 
 import static com.sun.tools.javac.code.Kinds.Kind.PCK;
@@ -149,7 +152,7 @@ public class SimpleMethods {
                 throw new IllegalArgumentException("Cannot resolve method type for explicit type variable");
             }
 
-            return deduced.get(0);
+            return deduced.head;
         }
 
         var returnType = invoked.getReturnType();
@@ -158,40 +161,59 @@ public class SimpleMethods {
                     .orElseThrow(() -> new IllegalArgumentException("Cannot deduce type from generic method call with matching return type"));
         }
 
-        var parametrizedArgs = simpleTypes.matchTypeParamToTypedArg(typeVariable, invoked.getTypeParameters(), invocation.getArguments(), enclosingClass);
-        var parameterType = simpleTypes.commonType(parametrizedArgs);
-        if(parameterType.isPresent()){
-            return parameterType.get();
+        var parameterType = resolveMethodType(typeVariable, invocation, invoked, enclosingClass);
+        var flatReturnType = simpleTypes.flattenGenericType(returnType).iterator();
+        var statementType = resolveMethodType(typeVariable, flatReturnType, enclosingClass, enclosingMethod, enclosingStatement);
+        return statementType
+                .map(type -> resolveMethodType(typeVariable, parameterType.orElse(null), type))
+                .orElse(resolveMethodType(typeVariable, parameterType.orElse(null)));
+    }
+
+    private Type resolveMethodType(Symbol.TypeVariableSymbol typeVariable, Type parameterType, Type type) {
+        if (!simpleTypes.isWildCard(type)) {
+            return type;
         }
 
-        var flatReturnType = simpleTypes.flattenGenericType(returnType).iterator();
+        return resolveMethodType(typeVariable, parameterType);
+    }
+
+    private Type resolveMethodType(Symbol.TypeVariableSymbol typeVariable, Type parameterType) {
+        return Objects.requireNonNullElse(parameterType, simpleTypes.erase(typeVariable));
+    }
+
+    private Optional<Type> resolveMethodType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCMethodInvocation invocation, Symbol.MethodSymbol invoked, JCTree.JCClassDecl enclosingClass) {
+        var invocationArgs = simpleTypes.resolveTypes(invocation.getArguments(), enclosingClass);
+        var constructorParams = invoked.getParameters().subList(1, invoked.getParameters().size());
+        var commonTypes = simpleTypes.matchTypeVariableSymbolToArgs(typeVariable, List.from(constructorParams), invocationArgs);
+        return simpleTypes.commonType(commonTypes);
+    }
+
+    private Optional<Type> resolveMethodType(Symbol.TypeVariableSymbol typeVariable, Iterator<Type> flatReturnType, JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCStatement enclosingStatement) {
         if (enclosingStatement instanceof JCTree.JCReturn) {
             var methodReturnType = simpleTypes.resolveClassType(enclosingMethod.getReturnType(), enclosingClass);
             if (methodReturnType.isEmpty()) {
-                return simpleTypes.erase(typeVariable);
+                return Optional.empty();
             }
 
             var flatMethodReturn = simpleTypes.flattenGenericType(methodReturnType.get()).iterator();
-            return simpleTypes.resolveImplicitType(flatMethodReturn, flatReturnType, typeVariable)
-                    .orElse(simpleTypes.erase(typeVariable));
+            return simpleTypes.resolveImplicitType(flatMethodReturn, flatReturnType, typeVariable);
         }
 
         if (enclosingStatement instanceof JCTree.JCVariableDecl) {
             var variable = (JCTree.JCVariableDecl) enclosingStatement;
             if(variable.isImplicitlyTyped()){
-                return simpleTypes.erase(typeVariable);
+                return Optional.empty();
             }
 
             var variableType = simpleTypes.resolveClassType(variable.vartype, enclosingClass);
             if (variableType.isEmpty()) {
-                return simpleTypes.erase(typeVariable);
+                return Optional.empty();
             }
 
             var flatVariableType = simpleTypes.flattenGenericType(variableType.get()).iterator();
-            return simpleTypes.resolveImplicitType(flatVariableType, flatReturnType, typeVariable)
-                    .orElse(simpleTypes.erase(typeVariable));
+            return simpleTypes.resolveImplicitType(flatVariableType, flatReturnType, typeVariable);
         }
 
-        return simpleTypes.erase(typeVariable);
+        return Optional.empty();
     }
 }

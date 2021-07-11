@@ -12,8 +12,11 @@ import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.util.Assert;
 import com.sun.tools.javac.util.List;
 import it.auties.reified.annotation.Reified;
+import it.auties.reified.util.CollectionUtils;
+import it.auties.reified.util.StreamUtils;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.experimental.ExtensionMethod;
 
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
@@ -21,13 +24,16 @@ import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeMirror;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.IntStream;
 
 import static com.sun.tools.javac.code.TypeTag.BOT;
 import static com.sun.tools.javac.code.TypeTag.VOID;
 
 @AllArgsConstructor
 @Data
+@ExtensionMethod({CollectionUtils.class, StreamUtils.class})
 public class SimpleTypes {
     private final ProcessingEnvironment environment;
     private final Types types;
@@ -71,6 +77,10 @@ public class SimpleTypes {
         return typeVariableSymbol.erasure(types);
     }
 
+    public Type erase(Type type) {
+        return types.erasure(type);
+    }
+
     public Type boxed(Type type){
         return types.boxedTypeOrType(type);
     }
@@ -79,26 +89,36 @@ public class SimpleTypes {
         return type instanceof Type.TypeVar;
     }
 
+    public boolean isWildCard(Type type){
+        return type instanceof Type.WildcardType;
+    }
+
     public Type resolveWildCard(Type type){
-        if(type instanceof Type.WildcardType){
-            return ((Type.WildcardType) type).type;
+        if (!isWildCard(type)) {
+            return type;
         }
 
-        return type;
+        return ((Type.WildcardType) type).type;
     }
 
     public List<Type> matchTypeParamToTypedArg(Symbol.TypeVariableSymbol typeParameter, List<Symbol.TypeVariableSymbol> invoked, List<JCTree.JCExpression> arguments, JCTree.JCClassDecl enclosingClass) {
         return invoked.stream()
                 .filter(typeParameter::equals)
                 .map(invoked::indexOf)
-                .map(arguments::get)
+                .map(index -> arguments.getSafe(index))
+                .onlyPresent()
                 .map(candidate -> resolveClassType(candidate, enclosingClass))
-                .filter(Optional::isPresent)
-                .map(Optional::get)
+                .onlyPresent()
                 .map(this::boxed)
                 .collect(List.collector());
     }
 
+    public List<Type> matchTypeVariableSymbolToArgs(Symbol.TypeVariableSymbol typeParameter, List<Symbol.VarSymbol> parameters, List<Type> arguments){
+        return IntStream.range(0, parameters.size())
+                .filter(index -> Objects.equals(typeParameter, parameters.get(index).asType().asElement()))
+                .mapToObj(arguments::get)
+                .collect(List.collector());
+    }
 
     public List<JCTree.JCExpression> flattenGenericType(JCTree.JCExpression type){
         if(!(type instanceof JCTree.JCTypeApply)){
@@ -152,5 +172,12 @@ public class SimpleTypes {
 
     public boolean isReified(Symbol typeSymbol) {
        return typeSymbol.getAnnotation(Reified.class) != null;
+    }
+
+    public List<Type> resolveTypes(List<? extends JCTree> expressions, JCTree.JCClassDecl clazz){
+        var env = findClassEnv(clazz);
+        return expressions.stream()
+                .map(type -> attr.attribExpr(type, env))
+                .collect(List.collector());
     }
 }
