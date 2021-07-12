@@ -16,7 +16,7 @@ public class MethodInvocationScanner extends ReifiedScanner<Symbol.MethodSymbol>
     @Override
     public Void visitMethodInvocation(MethodInvocationTree node, Void unused) {
         var rawNode = (JCTree.JCMethodInvocation) node;
-        var calling = simpleMethods().resolveMethod(enclosingClass(), rawNode);
+        var calling = simpleMethods().resolveMethodDecl(enclosingClass(), rawNode);
 
         System.err.println("Method candidate(" + rawNode + "): " + calling);
         if (parameter().methods().stream().noneMatch(method -> calling.filter(candidate -> method.sym.equals(candidate)).isPresent())) {

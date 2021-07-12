@@ -1,5 +1,6 @@
 package it.auties.reified.simplified;
 
+import com.sun.tools.javac.code.Kinds;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.comp.*;
@@ -7,10 +8,12 @@ import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.util.Assert;
 import com.sun.tools.javac.util.List;
+import com.sun.tools.javac.util.Name;
 import com.sun.tools.javac.util.Names;
 import it.auties.reified.scanner.VariableScanner;
 import lombok.AllArgsConstructor;
 import lombok.NonNull;
+import lombok.SneakyThrows;
 
 import java.util.Iterator;
 import java.util.Objects;
@@ -22,9 +25,78 @@ import static com.sun.tools.javac.code.Kinds.Kind.TYP;
 @AllArgsConstructor
 public class SimpleMethods {
     private final SimpleTypes simpleTypes;
+    private final Resolve resolve;
     private final Names names;
     private final Enter enter;
     private final Attr attr;
+
+    @SneakyThrows
+    public Optional<Symbol.MethodSymbol> resolveMethodDecl(@NonNull JCTree.JCClassDecl enclosingClass, @NonNull JCTree.JCMethodInvocation invocation) {
+        var invoked = invocation.getMethodSelect();
+        if(TreeInfo.isSuperCall(invoked)){
+            return Optional.empty();
+        }
+
+        var arguments = simpleTypes.resolveTypes(invocation.getArguments(), enclosingClass);
+        var typeArguments = simpleTypes.resolveTypes(invocation.getTypeArguments(), enclosingClass);
+        var env = simpleTypes.findClassEnv(enclosingClass);
+        switch (invoked.getTag()) {
+            case IDENT:
+                var identity = (JCTree.JCIdent) invoked;
+                if(identity.getName().contentEquals(names._super)){
+                    return Optional.empty();
+                }
+
+                System.err.println("Identity: " + identity);
+                return Optional.of(resolve.resolveInternalMethod(
+                        invocation.pos(),
+                        env,
+                        enclosingClass.sym.asType(),
+                        identity.getName(),
+                        arguments,
+                        typeArguments
+                ));
+            case SELECT:
+                var fieldAccess = (JCTree.JCFieldAccess) invoked;
+                var accessedField = fieldAccess.getExpression();
+                var accessedIdentifier = fieldAccess.getIdentifier();
+                var accessType = accessedField.hasTag(JCTree.Tag.IDENT) ? attr.attribIdent(accessedField, env).asType() : attr.attribExpr(accessedField, env);
+
+                System.err.println("FieldAccess: " + accessType + " " + accessedField.getClass().getName() + " " + accessType.isErroneous());
+                return Optional.of(resolve.resolveInternalMethod(
+                        invocation.pos(),
+                        env,
+                        accessType,
+                        accessedIdentifier,
+                        arguments,
+                        typeArguments
+                ));
+            case REFERENCE:
+                System.err.println("MemberReference");
+                var memberReference = (JCTree.JCMemberReference) invoked;
+                var memberField = memberReference.getQualifierExpression();
+                var memberIdentifier = memberReference.getName();
+                var memberType = attr.attribType(memberField, env);
+                return Optional.of(resolve.resolveInternalMethod(
+                        invocation.pos(),
+                        env,
+                        memberType,
+                        memberIdentifier,
+                        arguments,
+                        typeArguments
+                ));
+            case APPLY:
+                System.err.println("MethodInvocation");
+                var methodInvocation = (JCTree.JCMethodInvocation) invoked;
+                throw new RuntimeException(String.valueOf(methodInvocation));
+            case TYPEAPPLY:
+                System.err.println("JCTypeApply");
+                var typeApply = (JCTree.JCTypeApply) invoked;
+                throw new RuntimeException(String.valueOf(typeApply));
+            default:
+                throw new RuntimeException("Unknown type: " + invocation.getClass().getName());
+        }
+    }
 
     public Optional<Symbol.MethodSymbol> resolveMethod(@NonNull JCTree.JCClassDecl enclosingClass, @NonNull JCTree.JCMethodInvocation invocation) {
         var invoked = invocation.getMethodSelect();
@@ -71,11 +143,9 @@ public class SimpleMethods {
 
         if (selected instanceof JCTree.JCFieldAccess) {
             var innerAccess = (JCTree.JCFieldAccess) selected;
-
             var innerIdentity = innerAccess.getIdentifier();
             var innerEnclosing = resolveClassSymbol(innerAccess, classSymbol, enclosingClass);
             var resolvedMember = innerEnclosing.members().findFirst(innerIdentity);
-
             return resolvedMember.asType().asElement().baseSymbol();
         }
 
