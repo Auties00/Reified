@@ -1,6 +1,7 @@
 package it.auties.reified.processor;
 
 import com.sun.source.util.Trees;
+import com.sun.tools.javac.api.JavacTrees;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.Types;
@@ -63,7 +64,7 @@ public class ReifiedProcessor extends AbstractProcessor {
         var names = Names.instance(context);
         var resolve = Resolve.instance(context);
 
-        this.trees = Trees.instance(processingEnv);
+        this.trees = JavacTrees.instance(context);
         this.treeMaker = TreeMaker.instance(context);
         this.simpleTypes = new SimpleTypes(processingEnv, types, attr, enter);
         this.simpleClasses = new SimpleClasses(simpleTypes, resolve);
