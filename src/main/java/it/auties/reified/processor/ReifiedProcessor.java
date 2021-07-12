@@ -1,11 +1,12 @@
 package it.auties.reified.processor;
 
+import com.sun.source.util.Trees;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.Types;
 import com.sun.tools.javac.comp.*;
+import com.sun.tools.javac.processing.JavacRoundEnvironment;
 import com.sun.tools.javac.tree.JCTree;
-import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.Assert;
 import com.sun.tools.javac.util.List;
@@ -15,11 +16,12 @@ import it.auties.reified.annotation.Reified;
 import it.auties.reified.model.ReifiedCall;
 import it.auties.reified.model.ReifiedCandidate;
 import it.auties.reified.model.ReifiedDeclaration;
-import it.auties.reified.scanner.AnnotationScanner;
 import it.auties.reified.scanner.ClassInitializationScanner;
 import it.auties.reified.scanner.MethodInvocationScanner;
-import it.auties.reified.simplified.*;
-import lombok.SneakyThrows;
+import it.auties.reified.simplified.SimpleClasses;
+import it.auties.reified.simplified.SimpleContext;
+import it.auties.reified.simplified.SimpleMethods;
+import it.auties.reified.simplified.SimpleTypes;
 
 import javax.annotation.processing.AbstractProcessor;
 import javax.annotation.processing.RoundEnvironment;
@@ -29,7 +31,10 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
 import java.lang.reflect.Modifier;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @SupportedAnnotationTypes(Reified.PATH)
@@ -38,57 +43,66 @@ public class ReifiedProcessor extends AbstractProcessor {
     private SimpleTypes simpleTypes;
     private SimpleClasses simpleClasses;
     private SimpleMethods simpleMethods;
-    private Todo todo;
+    private Trees trees;
     private TreeMaker treeMaker;
+    private JavacRoundEnvironment environment;
     private List<ReifiedDeclaration> reifiedDeclarations;
 
     @Override
-    @SneakyThrows(Throwable.class)
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
-        try{
-            if(roundEnv.processingOver()){
-                return true;
-            }
-
-            init();
-            lookup();
-            processing();
-            return true;
-        }catch (Throwable throwable){
-            throwable.printStackTrace();
-            throw new RuntimeException(throwable.getMessage(), throwable);
-        }
+        init(roundEnv);
+        lookup();
+        processing();
+        return true;
     }
 
-    private void init() {
+    private void init(RoundEnvironment environment) {
         var context = SimpleContext.resolveContext(processingEnv);
-        this.treeMaker = TreeMaker.instance(context);
-        this.todo = Todo.instance(context);
-
         var enter = Enter.instance(context);
         var attr = Attr.instance(context);
         var types = Types.instance(context);
         var names = Names.instance(context);
         var resolve = Resolve.instance(context);
 
+        this.trees = Trees.instance(processingEnv);
+        this.treeMaker = TreeMaker.instance(context);
         this.simpleTypes = new SimpleTypes(processingEnv, types, attr, enter);
         this.simpleClasses = new SimpleClasses(simpleTypes, resolve);
         this.simpleMethods = new SimpleMethods(simpleTypes, names, enter, attr);
+        this.environment = (JavacRoundEnvironment) environment;
     }
 
     private void lookup() {
-        var annotationScanner = new AnnotationScanner();
-        var candidates = findAnnotatedTrees(annotationScanner);
+        var candidates = findAnnotatedTrees();
         this.reifiedDeclarations = parseCandidates(candidates);
     }
 
-    private List<ReifiedCandidate> findAnnotatedTrees(AnnotationScanner annotationScanner) {
-        return todo.stream()
-                .map(todo -> todo.tree)
-                .map(annotationScanner::scan)
-                .flatMap(Collection::stream)
+    private List<ReifiedCandidate> findAnnotatedTrees() {
+        return environment.getElementsAnnotatedWith(Reified.class)
+                .stream()
+                .map(this::findAnnotatedTree)
                 .collect(List.collector())
                 .reverse();
+    }
+
+    private ReifiedCandidate findAnnotatedTree(Element element) {
+        var typeVariable = (Symbol.TypeVariableSymbol) element;
+        var owner = typeVariable.getEnclosingElement();
+        if(owner instanceof Symbol.ClassSymbol){
+            var classSymbol = (Symbol.ClassSymbol) owner;
+            var env = simpleTypes.findClassEnv((Type.ClassType) classSymbol.asType());
+            return new ReifiedCandidate(typeVariable, (JCTree.JCClassDecl) env.tree, null);
+        }
+
+        if(owner instanceof Symbol.MethodSymbol){
+            var methodSymbol = (Symbol.MethodSymbol) owner;
+            var classSymbol = (Symbol.ClassSymbol) methodSymbol.getEnclosingElement();
+            var classEnv = simpleTypes.findClassEnv((Type.ClassType) classSymbol.asType());
+            var methodEnv = trees.getPath(methodSymbol);
+            return new ReifiedCandidate(typeVariable, (JCTree.JCClassDecl) classEnv.tree, (JCTree.JCMethodDecl) methodEnv.getLeaf());
+        }
+
+        throw new IllegalArgumentException("Cannot find annotated tree, unknown owner: " + owner.getClass().getName());
     }
 
     private List<ReifiedDeclaration> parseCandidates(List<ReifiedCandidate> candidates) {
@@ -274,7 +288,9 @@ public class ReifiedProcessor extends AbstractProcessor {
     }
 
     private Set<JCTree> findCompilationUnits(ReifiedDeclaration reifiedDeclaration) {
-        return todo.stream()
+        return environment.getRootElements()
+                .stream()
+                .map(element -> simpleTypes.findClassEnv((JCTree.JCClassDecl) trees.getTree(element)))
                 .filter(unit -> checkClassScope(reifiedDeclaration, unit))
                 .map(env -> env.tree)
                 .collect(Collectors.toUnmodifiableSet());
