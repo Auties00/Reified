@@ -5,7 +5,6 @@ import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.Types;
 import com.sun.tools.javac.comp.*;
-import com.sun.tools.javac.processing.JavacRoundEnvironment;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.Assert;
@@ -45,7 +44,7 @@ public class ReifiedProcessor extends AbstractProcessor {
     private SimpleMethods simpleMethods;
     private Trees trees;
     private TreeMaker treeMaker;
-    private JavacRoundEnvironment environment;
+    private RoundEnvironment environment;
     private List<ReifiedDeclaration> reifiedDeclarations;
 
     @Override
@@ -69,7 +68,7 @@ public class ReifiedProcessor extends AbstractProcessor {
         this.simpleTypes = new SimpleTypes(processingEnv, types, attr, enter);
         this.simpleClasses = new SimpleClasses(simpleTypes, resolve);
         this.simpleMethods = new SimpleMethods(simpleTypes, names, enter, attr);
-        this.environment = (JavacRoundEnvironment) environment;
+        this.environment = environment;
     }
 
     private void lookup() {
