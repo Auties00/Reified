@@ -2,17 +2,17 @@ package it.auties.reified.simplified;
 
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
-import com.sun.tools.javac.comp.*;
+import com.sun.tools.javac.comp.Resolve;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.util.List;
 import it.auties.reified.model.ReifiedDeclaration;
 import it.auties.reified.util.StreamUtils;
 import lombok.AllArgsConstructor;
+import lombok.NonNull;
 import lombok.experimental.ExtensionMethod;
 
 import javax.lang.model.element.Modifier;
-
 import java.util.Iterator;
 import java.util.Objects;
 import java.util.Optional;
@@ -79,9 +79,18 @@ public class SimpleClasses {
         return constructor;
     }
 
-    public Type resolveClassType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCNewClass invocation, Type.ClassType invoked, JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCStatement enclosingStatement) {
-        var invokedTypeArgs = invoked.asElement().baseSymbol().getTypeParameters();
-        var invocationTypeArgs = simpleTypes.flattenGenericType(invocation.clazz);
+    public Symbol.MethodSymbol resolveClass(@NonNull JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, @NonNull JCTree.JCNewClass invocation) {
+        var classEnv = simpleTypes.findClassEnv(enclosingClass);
+        var methodEnv = simpleTypes.findMethodEnv(enclosingMethod, classEnv);
+        simpleTypes.resolveEnv(methodEnv);
+        var symbol = TreeInfo.symbolFor(invocation);
+        return (Symbol.MethodSymbol) symbol;
+    }
+
+    public Type resolveClassType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCNewClass invocation, Symbol.MethodSymbol invoked, JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCStatement enclosingStatement) {
+        var classType = invoked.enclClass();
+        var invokedTypeArgs = classType.getTypeParameters();
+        var invocationTypeArgs = simpleTypes.flattenGenericType(invocation);
         if (invocationTypeArgs != null && !invocationTypeArgs.isEmpty()) {
             var deduced = simpleTypes.matchTypeParamToTypedArg(typeVariable, invokedTypeArgs, invocationTypeArgs, enclosingClass);
             if(deduced.isEmpty()){
@@ -92,7 +101,7 @@ public class SimpleClasses {
         }
 
         var parameterType = resolveClassType(typeVariable, invocation, invoked, enclosingClass);
-        var flatReturnType = simpleTypes.flattenGenericType(invoked.getTypeArguments()).iterator();
+        var flatReturnType = simpleTypes.flattenGenericType(classType.asType().getTypeArguments()).iterator();
         var statementType = resolveClassType(typeVariable, flatReturnType, enclosingClass, enclosingMethod, enclosingStatement);
         return statementType
                 .map(type -> resolveClassType(typeVariable, parameterType.orElse(null), type))
@@ -100,7 +109,7 @@ public class SimpleClasses {
     }
 
     private Type resolveClassType(Symbol.TypeVariableSymbol typeVariable, Type parameterType, Type type) {
-        if (!simpleTypes.isWildCard(type)) {
+        if (simpleTypes.isNotWildCard(type)) {
             return type;
         }
 
@@ -111,10 +120,9 @@ public class SimpleClasses {
         return Objects.requireNonNullElse(parameterType, simpleTypes.erase(typeVariable));
     }
 
-    private Optional<Type> resolveClassType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCNewClass invocation, Type.ClassType invoked, JCTree.JCClassDecl enclosingClass) {
+    private Optional<Type> resolveClassType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCNewClass invocation, Symbol.MethodSymbol constructor, JCTree.JCClassDecl enclosingClass) {
         var invocationArgs = simpleTypes.resolveTypes(invocation.getArguments(), enclosingClass);
-        var constructor = resolveConstructor(typeVariable, invocation, invoked, enclosingClass);
-        var constructorParams = constructor.getParameters().subList(1, constructor.getParameters().size());
+        var constructorParams = constructor.getParameters();
         var commonTypes = simpleTypes.matchTypeVariableSymbolToArgs(typeVariable, List.from(constructorParams), invocationArgs);
         return simpleTypes.commonType(commonTypes);
     }
@@ -146,20 +154,5 @@ public class SimpleClasses {
         }
 
         return Optional.empty();
-    }
-
-
-    private Symbol.MethodSymbol resolveConstructor(Symbol.TypeVariableSymbol typeVariable, JCTree.JCNewClass invocation, Type.ClassType invoked, JCTree.JCClassDecl enclosingClass) {
-        return resolve.resolveInternalConstructor(
-                invocation.pos(),
-                simpleTypes.findClassEnv(enclosingClass),
-                simpleTypes.erase(invoked),
-                simpleTypes.resolveTypes(invocation.getArguments(), enclosingClass).prepend(generatedParameter(typeVariable)),
-                List.of(typeVariable.asType())
-        );
-    }
-
-    private Type generatedParameter(Symbol.TypeVariableSymbol typeVariable){
-        return simpleTypes.createTypeWithParameter(Class.class, typeVariable);
     }
 }

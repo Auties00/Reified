@@ -2,12 +2,13 @@ package it.auties.reified.scanner;
 
 import com.sun.source.tree.*;
 import com.sun.source.util.TreeScanner;
+import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.util.Assert;
 import it.auties.reified.model.ReifiedCall;
 import it.auties.reified.model.ReifiedDeclaration;
+import it.auties.reified.simplified.SimpleClasses;
 import it.auties.reified.simplified.SimpleMethods;
-import it.auties.reified.simplified.SimpleTypes;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.RequiredArgsConstructor;
@@ -20,12 +21,12 @@ import java.util.Set;
 @RequiredArgsConstructor
 @Data
 @Accessors(fluent = true)
-public abstract class ReifiedScanner<T> extends TreeScanner<Void, Void> {
+public abstract class ReifiedScanner extends TreeScanner<Void, Void> {
     private final ReifiedDeclaration parameter;
+    private final SimpleClasses simpleClasses;
     private final SimpleMethods simpleMethods;
-    private final SimpleTypes simpleTypes;
 
-    private Set<ReifiedCall<T>> results;
+    private Set<ReifiedCall> results;
     private JCTree.JCClassDecl enclosingClass;
     private JCTree.JCMethodDecl enclosingMethod;
     private JCTree.JCStatement enclosingStatement;
@@ -67,11 +68,11 @@ public abstract class ReifiedScanner<T> extends TreeScanner<Void, Void> {
         return super.visitVariable(node, unused);
     }
 
-    protected ReifiedCall<T> buildResultCall(JCTree.JCPolyExpression tree, T invoked) {
-        return new ReifiedCall<T>(tree, invoked, enclosingClass, enclosingMethod, enclosingStatement);
+    protected ReifiedCall buildResultCall(JCTree.JCPolyExpression tree, Symbol.MethodSymbol invoked) {
+        return new ReifiedCall(tree, invoked, enclosingClass, enclosingMethod, enclosingStatement);
     }
 
-    public Set<ReifiedCall<T>> scan(JCTree tree) {
+    public Set<ReifiedCall> scan(JCTree tree) {
         this.results = new HashSet<>();
         scan(tree, null);
         return results;

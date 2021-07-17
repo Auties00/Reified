@@ -10,18 +10,13 @@ import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.Assert;
 import com.sun.tools.javac.util.List;
-import com.sun.tools.javac.util.Name;
-import com.sun.tools.javac.util.Names;
 import it.auties.reified.annotation.Reified;
 import it.auties.reified.model.ReifiedCall;
 import it.auties.reified.model.ReifiedCandidate;
 import it.auties.reified.model.ReifiedDeclaration;
 import it.auties.reified.scanner.ClassInitializationScanner;
 import it.auties.reified.scanner.MethodInvocationScanner;
-import it.auties.reified.simplified.SimpleClasses;
-import it.auties.reified.simplified.SimpleContext;
-import it.auties.reified.simplified.SimpleMethods;
-import it.auties.reified.simplified.SimpleTypes;
+import it.auties.reified.simplified.*;
 
 import javax.annotation.processing.AbstractProcessor;
 import javax.annotation.processing.RoundEnvironment;
@@ -30,8 +25,6 @@ import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
-import java.lang.reflect.Modifier;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Objects;
 import java.util.Set;
@@ -43,8 +36,8 @@ public class ReifiedProcessor extends AbstractProcessor {
     private SimpleTypes simpleTypes;
     private SimpleClasses simpleClasses;
     private SimpleMethods simpleMethods;
+    private SimpleMaker simpleMaker;
     private Trees trees;
-    private TreeMaker treeMaker;
     private RoundEnvironment environment;
     private List<ReifiedDeclaration> reifiedDeclarations;
 
@@ -61,14 +54,15 @@ public class ReifiedProcessor extends AbstractProcessor {
         var enter = Enter.instance(context);
         var attr = Attr.instance(context);
         var types = Types.instance(context);
-        var names = Names.instance(context);
         var resolve = Resolve.instance(context);
+        var treeMaker = TreeMaker.instance(context);
+        var memberEnter = MemberEnter.instance(context);
 
         this.trees = JavacTrees.instance(context);
-        this.treeMaker = TreeMaker.instance(context);
-        this.simpleTypes = new SimpleTypes(processingEnv, types, attr, enter);
+        this.simpleTypes = new SimpleTypes(processingEnv, types, attr, enter, memberEnter);
         this.simpleClasses = new SimpleClasses(simpleTypes, resolve);
-        this.simpleMethods = new SimpleMethods(simpleTypes, resolve, names, enter, attr);
+        this.simpleMethods = new SimpleMethods(simpleTypes);
+        this.simpleMaker = new SimpleMaker(simpleTypes, treeMaker);
         this.environment = environment;
     }
 
@@ -115,7 +109,7 @@ public class ReifiedProcessor extends AbstractProcessor {
         return ReifiedDeclaration.builder()
                 .typeParameter(candidate.typeVariableSymbol())
                 .enclosingClass(candidate.enclosingClass())
-                .methods(findAndProcessMembers(candidate))
+                .methods(findMembers(candidate))
                 .isClass(isClassScoped(candidate))
                 .modifier(simpleClasses.findRealAccess(candidate.enclosingClass(), candidate.enclosingMethod()))
                 .build();
@@ -125,66 +119,17 @@ public class ReifiedProcessor extends AbstractProcessor {
         return candidate.enclosingMethod() == null;
     }
 
-    private List<JCTree.JCMethodDecl> findAndProcessMembers(ReifiedCandidate candidate) {
+    private List<JCTree.JCMethodDecl> findMembers(ReifiedCandidate candidate) {
         if(isClassScoped(candidate)){
-            var localVariable = createLocalVariable(candidate.typeVariableSymbol(), candidate.enclosingClass());
-            var constructors = simpleClasses.findConstructors(candidate.enclosingClass());
-            constructors.forEach(constructor -> addParameterAndAssign(candidate.typeVariableSymbol(), candidate.enclosingClass(), localVariable, constructor));
-            return constructors;
+            return simpleClasses.findConstructors(candidate.enclosingClass());
         }
 
-        addParameter(candidate.typeVariableSymbol(), candidate.enclosingMethod());
         return List.of(candidate.enclosingMethod());
-    }
-
-    private void addParameterAndAssign(Element typeParameter, JCTree.JCClassDecl typeParentTree, JCTree.JCVariableDecl localVariable, JCTree.JCMethodDecl constructor) {
-        var parameter = addParameter(typeParameter, constructor);
-        var thisCall = treeMaker.This(typeParentTree.sym.asType());
-        var localVariableSelection = treeMaker.Select(thisCall, localVariable.getName());
-        var localVariableAssignment = treeMaker.Assign(localVariableSelection, treeMaker.Ident(parameter));
-
-        var localVariableStatement = treeMaker.at(constructor.pos).Exec(localVariableAssignment);
-        var newStats = new ArrayList<>(constructor.body.stats);
-        addStatement(localVariableStatement, newStats);
-        constructor.body.stats = List.from(newStats);
-    }
-
-    private void addStatement(JCTree.JCExpressionStatement localVariableStatement, java.util.List<JCTree.JCStatement> newStats) {
-        if(newStats.isEmpty()){
-            newStats.add(localVariableStatement);
-            return;
-        }
-
-        newStats.add(1, localVariableStatement);
-    }
-
-    private JCTree.JCVariableDecl createLocalVariable(Element typeParameter, JCTree.JCClassDecl enclosingClass) {
-        var localVariableName = (Name) typeParameter.getSimpleName();
-        var localVariableModifiers = treeMaker.Modifiers(Modifier.PRIVATE | Modifier.FINAL);
-        var localVariableType = treeMaker.Type(simpleTypes.createTypeWithParameter(Class.class, typeParameter));
-        var localVariable = treeMaker.at(enclosingClass.pos).VarDef(localVariableModifiers, localVariableName, localVariableType, null);
-        enclosingClass.defs = enclosingClass.defs.prepend(localVariable);
-        return localVariable;
-    }
-
-    private JCTree.JCVariableDecl addParameter(Element typeParameter, JCTree.JCMethodDecl method) {
-        var paramType = simpleTypes.createTypeWithParameter(Class.class, typeParameter);
-        var param = treeMaker.at(method.pos).Param((Name) typeParameter.getSimpleName(), paramType, method.sym);
-        param.sym.adr = 0;
-
-        method.params = method.params.prepend(param);
-
-        var methodSymbol = (Symbol.MethodSymbol) method.sym;
-        methodSymbol.params = methodSymbol.params.prepend(param.sym);
-
-        var methodType = methodSymbol.type.asMethodType();
-        methodType.argtypes = methodType.argtypes.prepend(paramType);
-
-        return param;
     }
 
     private void processing() {
         reifiedDeclarations.forEach(this::processTypeParameter);
+        reifiedDeclarations.forEach(simpleMaker::processMembers);
     }
 
     private void processTypeParameter(ReifiedDeclaration reifiedDeclaration) {
@@ -197,7 +142,7 @@ public class ReifiedProcessor extends AbstractProcessor {
     }
 
     private void processMethodParameter(ReifiedDeclaration reifiedDeclaration) {
-        var methodScanner = new MethodInvocationScanner(reifiedDeclaration, simpleMethods, simpleTypes);
+        var methodScanner = new MethodInvocationScanner(reifiedDeclaration, simpleClasses, simpleMethods);
         findCompilationUnits(reifiedDeclaration)
                 .stream()
                 .map(methodScanner::scan)
@@ -205,7 +150,7 @@ public class ReifiedProcessor extends AbstractProcessor {
                 .forEach(methodInvocation -> processMethodParameter(reifiedDeclaration.typeParameter(), methodInvocation));
     }
 
-    private void processMethodParameter(Symbol.TypeVariableSymbol typeVariable, ReifiedCall<Symbol.MethodSymbol> inv) {
+    private void processMethodParameter(Symbol.TypeVariableSymbol typeVariable, ReifiedCall inv) {
         var invocation = (JCTree.JCMethodInvocation) inv.invocation();
         var clazz = inv.enclosingClass();
         var method = inv.enclosingMethod();
@@ -223,7 +168,7 @@ public class ReifiedProcessor extends AbstractProcessor {
     }
 
     private void processClassParameter(ReifiedDeclaration reifiedDeclaration) {
-        var classScanner = new ClassInitializationScanner(reifiedDeclaration, simpleMethods, simpleTypes);
+        var classScanner = new ClassInitializationScanner(reifiedDeclaration, simpleClasses, simpleMethods);
         findCompilationUnits(reifiedDeclaration)
                 .stream()
                 .map(classScanner::scan)
@@ -231,7 +176,7 @@ public class ReifiedProcessor extends AbstractProcessor {
                 .forEach(classInit -> processClassParameter(reifiedDeclaration.typeParameter(), classInit));
     }
 
-    private void processClassParameter(Symbol.TypeVariableSymbol typeVariable, ReifiedCall<Type.ClassType> init) {
+    private void processClassParameter(Symbol.TypeVariableSymbol typeVariable, ReifiedCall init) {
         var invocation = (JCTree.JCNewClass) init.invocation();
         var clazz = init.enclosingClass();
         var method = init.enclosingMethod();
@@ -250,7 +195,7 @@ public class ReifiedProcessor extends AbstractProcessor {
 
     public JCTree.JCExpression createClassLiteral(Type type, JCTree.JCClassDecl clazz, JCTree.JCMethodDecl method){
         if(!simpleTypes.isGeneric(type)){
-            return treeMaker.ClassLiteral(simpleTypes.resolveWildCard(type));
+            return simpleMaker.classLiteral(simpleTypes.resolveWildCard(type));
         }
 
         var typeSymbol = (Symbol.TypeVariableSymbol) type.asElement().baseSymbol();
@@ -263,7 +208,7 @@ public class ReifiedProcessor extends AbstractProcessor {
         if(owner instanceof Symbol.ClassSymbol){
             var member = owner.members().findFirst(name, (sym) -> sym instanceof Symbol.VarSymbol);
             Assert.checkNonNull(member, "Nested reified parameter cannot be processed if enclosing parameters have not been processed yet");
-            return treeMaker.Ident(member);
+            return simpleMaker.identity(member);
         }
 
         if(owner instanceof Symbol.MethodSymbol){
@@ -272,7 +217,7 @@ public class ReifiedProcessor extends AbstractProcessor {
                     .filter(param -> param.getSimpleName().contentEquals(name))
                     .findFirst()
                     .orElseThrow(() -> new AssertionError("Nested reified parameter cannot be processed if enclosing parameters have not been processed yet"));
-            return treeMaker.Ident(variable);
+            return simpleMaker.identity(variable);
         }
 
         throw new IllegalArgumentException("Unknown owner: " + owner.getClass().getName());

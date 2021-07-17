@@ -4,26 +4,30 @@ import com.sun.source.tree.MethodInvocationTree;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.tree.JCTree;
 import it.auties.reified.model.ReifiedDeclaration;
+import it.auties.reified.simplified.SimpleClasses;
 import it.auties.reified.simplified.SimpleMethods;
-import it.auties.reified.simplified.SimpleTrees;
-import it.auties.reified.simplified.SimpleTypes;
 
-public class MethodInvocationScanner extends ReifiedScanner<Symbol.MethodSymbol> {
-    public MethodInvocationScanner(ReifiedDeclaration parameter, SimpleMethods simpleMethods, SimpleTypes simpleTypes) {
-        super(parameter, simpleMethods, simpleTypes);
+public class MethodInvocationScanner extends ReifiedScanner {
+    public MethodInvocationScanner(ReifiedDeclaration parameter, SimpleClasses simpleClasses, SimpleMethods simpleMethods) {
+        super(parameter, simpleClasses, simpleMethods);
     }
 
     @Override
     public Void visitMethodInvocation(MethodInvocationTree node, Void unused) {
         var rawNode = (JCTree.JCMethodInvocation) node;
-        var calling = simpleMethods().resolveMethodDecl(enclosingClass(), rawNode);
-
-        System.err.println("Method candidate(" + rawNode + "): " + calling);
-        if (parameter().methods().stream().noneMatch(method -> calling.filter(candidate -> method.sym.equals(candidate)).isPresent())) {
+        var calling = simpleMethods().resolveMethod(enclosingClass(), enclosingMethod(), rawNode);
+        if (!isMatchingMethod(calling)) {
             return super.visitMethodInvocation(node, unused);
         }
 
-        results().add(buildResultCall(rawNode, calling.get()));
+        results().add(buildResultCall(rawNode, calling));
         return super.visitMethodInvocation(node, unused);
+    }
+
+    private boolean isMatchingMethod(Symbol.MethodSymbol calling) {
+        return parameter()
+                .methods()
+                .stream()
+                .anyMatch(method -> method.sym.equals(calling));
     }
 }

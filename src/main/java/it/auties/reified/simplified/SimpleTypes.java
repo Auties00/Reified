@@ -4,10 +4,7 @@ import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.TypeTag;
 import com.sun.tools.javac.code.Types;
-import com.sun.tools.javac.comp.Attr;
-import com.sun.tools.javac.comp.AttrContext;
-import com.sun.tools.javac.comp.Enter;
-import com.sun.tools.javac.comp.Env;
+import com.sun.tools.javac.comp.*;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.util.Assert;
 import com.sun.tools.javac.util.List;
@@ -28,9 +25,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
-import static com.sun.tools.javac.code.TypeTag.BOT;
-import static com.sun.tools.javac.code.TypeTag.VOID;
-
 @AllArgsConstructor
 @Data
 @ExtensionMethod({CollectionUtils.class, StreamUtils.class})
@@ -39,6 +33,7 @@ public class SimpleTypes {
     private final Types types;
     private final Attr attr;
     private final Enter enter;
+    private final MemberEnter memberEnter;
 
     public Type createTypeWithParameter(Class<?> clazz, Element parameter) {
         return createTypeWithParameter(clazz, parameter.asType());
@@ -71,6 +66,14 @@ public class SimpleTypes {
         return enter.getClassEnv(type.asElement());
     }
 
+    public Env<AttrContext> findMethodEnv(JCTree.JCMethodDecl method, Env<AttrContext> env){
+        if(method == null){
+            return env;
+        }
+
+        return memberEnter.getMethodEnv(method, env);
+    }
+
     public Optional<Type> commonType(List<Type> input) {
         return Optional.ofNullable(types.lub(input))
                 .filter(type -> type.getTag() != TypeTag.BOT)
@@ -93,12 +96,12 @@ public class SimpleTypes {
         return type instanceof Type.TypeVar;
     }
 
-    public boolean isWildCard(Type type){
-        return type instanceof Type.WildcardType;
+    public boolean isNotWildCard(Type type){
+        return !(type instanceof Type.WildcardType);
     }
 
     public Type resolveWildCard(Type type){
-        if (!isWildCard(type)) {
+        if (isNotWildCard(type)) {
             return type;
         }
 
@@ -127,7 +130,7 @@ public class SimpleTypes {
 
     public List<JCTree.JCExpression> flattenGenericType(JCTree.JCExpression type){
         if(!(type instanceof JCTree.JCTypeApply)){
-            return List.of(type);
+            return List.nil();
         }
 
         var apply = (JCTree.JCTypeApply) type;
@@ -139,7 +142,7 @@ public class SimpleTypes {
 
     public List<Type> flattenGenericType(Type type){
         if(!type.isParameterized()){
-            return List.of(type);
+            return List.nil();
         }
 
         return flattenGenericType(type.getTypeArguments());
@@ -166,13 +169,8 @@ public class SimpleTypes {
         return Optional.empty();
     }
 
-    public Type resolveImplicitType(JCTree.JCVariableDecl variable, Env<AttrContext> env) {
-        var initType = attr.attribExpr(variable.init, env);
-        if (initType.hasTag(BOT) || initType.hasTag(VOID)) {
-            throw new IllegalArgumentException("Cannot deduce type of void or null");
-        }
-
-        return types.upward(initType, types.captures(initType));
+    public void resolveEnv(Env<AttrContext> attrContextEnv){
+        attr.attrib(attrContextEnv);
     }
 
     public boolean isReified(Symbol typeSymbol) {
