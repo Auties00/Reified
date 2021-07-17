@@ -1,7 +1,5 @@
 package it.auties.reified.util;
 
-import com.sun.tools.javac.util.List;
-
 import java.util.Optional;
 import java.util.stream.Stream;
 
