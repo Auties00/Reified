@@ -18,7 +18,7 @@ import java.util.LinkedList;
 public class SimpleMaker {
     private final SimpleTypes simpleTypes;
     private final TreeMaker treeMaker;
-
+    
     public JCTree.JCIdent identity(Symbol symbol){
         return treeMaker.Ident(symbol);
     }
@@ -29,14 +29,17 @@ public class SimpleMaker {
 
     public void processMembers(ReifiedDeclaration declaration) {
         if(declaration.isClass()){
-            var localVariable = createLocalVariable(declaration.typeParameter(), declaration.enclosingClass());
-            var constructors = declaration.methods();
-            constructors.forEach(constructor -> addParameterAndAssign(declaration.typeParameter(), declaration.enclosingClass(), localVariable, constructor));
+            processClassMembers(declaration.typeParameter(), declaration.methods(), declaration.enclosingClass());
             return;
         }
 
         var parameter = declaration.methods().head;
         addParameter(declaration.typeParameter(), parameter);
+    }
+
+    public void processClassMembers(Symbol.TypeVariableSymbol typeVariableSymbol, List<JCTree.JCMethodDecl> constructors, JCTree.JCClassDecl enclosingClass) {
+        var localVariable = createLocalVariable(typeVariableSymbol, enclosingClass);
+        constructors.forEach(constructor -> addParameterAndAssign(typeVariableSymbol, enclosingClass, localVariable, constructor));
     }
 
     private void addParameterAndAssign(Element typeParameter, JCTree.JCClassDecl typeParentTree, JCTree.JCVariableDecl localVariable, JCTree.JCMethodDecl constructor) {
@@ -68,9 +71,16 @@ public class SimpleMaker {
 
     private JCTree.JCVariableDecl createLocalVariable(Element typeParameter, JCTree.JCClassDecl enclosingClass) {
         var localVariableName = (Name) typeParameter.getSimpleName();
-        var localVariableModifiers = treeMaker.Modifiers(Modifier.PRIVATE | Modifier.FINAL);
-        var localVariableType = treeMaker.Type(simpleTypes.createTypeWithParameter(Class.class, typeParameter));
+
+        var rawLocalVariableModifiers = Modifier.PRIVATE | Modifier.FINAL;
+        var localVariableModifiers = treeMaker.Modifiers(rawLocalVariableModifiers);
+
+        var rawLocalVariableType = simpleTypes.createTypeWithParameter(Class.class, typeParameter);
+        var localVariableType = treeMaker.Type(rawLocalVariableType);
+
         var localVariable = treeMaker.at(enclosingClass.pos).VarDef(localVariableModifiers, localVariableName, localVariableType, null);
+        localVariable.sym = new Symbol.VarSymbol(rawLocalVariableModifiers, localVariableName, rawLocalVariableType, enclosingClass.sym);
+
         enclosingClass.defs = enclosingClass.defs.prepend(localVariable);
         return localVariable;
     }
@@ -89,5 +99,10 @@ public class SimpleMaker {
         methodType.argtypes = methodType.argtypes.prepend(paramType);
 
         return param;
+    }
+
+    public void addSuperParam(JCTree.JCExpression superType, JCTree.JCExpressionStatement firstStatement) {
+        var superCall = (JCTree.JCMethodInvocation) firstStatement.getExpression();
+        superCall.args = superCall.args.prepend(superType);
     }
 }

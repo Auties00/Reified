@@ -2,7 +2,6 @@ package it.auties.reified.simplified;
 
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
-import com.sun.tools.javac.comp.Resolve;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.util.List;
@@ -23,7 +22,6 @@ import static com.sun.tools.javac.code.Flags.GENERATEDCONSTR;
 @ExtensionMethod(StreamUtils.class)
 public class SimpleClasses {
     private final SimpleTypes simpleTypes;
-    private final Resolve resolve;
 
     public ReifiedDeclaration.AccessModifier findRealAccess(JCTree.JCClassDecl clazz, JCTree.JCMethodDecl method) {
         if (method == null) {
@@ -81,8 +79,7 @@ public class SimpleClasses {
 
     public Symbol.MethodSymbol resolveClass(@NonNull JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, @NonNull JCTree.JCNewClass invocation) {
         var classEnv = simpleTypes.findClassEnv(enclosingClass);
-        var methodEnv = simpleTypes.findMethodEnv(enclosingMethod, classEnv);
-        simpleTypes.resolveEnv(methodEnv);
+        simpleTypes.resolveEnv(classEnv);
         var symbol = TreeInfo.symbolFor(invocation);
         return (Symbol.MethodSymbol) symbol;
     }
@@ -90,7 +87,7 @@ public class SimpleClasses {
     public Type resolveClassType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCNewClass invocation, Symbol.MethodSymbol invoked, JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCStatement enclosingStatement) {
         var classType = invoked.enclClass();
         var invokedTypeArgs = classType.getTypeParameters();
-        var invocationTypeArgs = simpleTypes.flattenGenericType(invocation);
+        var invocationTypeArgs = simpleTypes.flattenGenericType(invocation.getIdentifier());
         if (invocationTypeArgs != null && !invocationTypeArgs.isEmpty()) {
             var deduced = simpleTypes.matchTypeParamToTypedArg(typeVariable, invokedTypeArgs, invocationTypeArgs, enclosingClass);
             if(deduced.isEmpty()){
@@ -104,8 +101,8 @@ public class SimpleClasses {
         var flatReturnType = simpleTypes.flattenGenericType(classType.asType().getTypeArguments()).iterator();
         var statementType = resolveClassType(typeVariable, flatReturnType, enclosingClass, enclosingMethod, enclosingStatement);
         return statementType
-                .map(type -> resolveClassType(typeVariable, parameterType.orElse(null), type))
-                .orElse(resolveClassType(typeVariable, parameterType.orElse(null)));
+                .map(type -> resolveClassType(typeVariable, parameterType, type))
+                .orElse(resolveClassType(typeVariable, parameterType));
     }
 
     private Type resolveClassType(Symbol.TypeVariableSymbol typeVariable, Type parameterType, Type type) {
@@ -120,7 +117,7 @@ public class SimpleClasses {
         return Objects.requireNonNullElse(parameterType, simpleTypes.erase(typeVariable));
     }
 
-    private Optional<Type> resolveClassType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCNewClass invocation, Symbol.MethodSymbol constructor, JCTree.JCClassDecl enclosingClass) {
+    private Type resolveClassType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCNewClass invocation, Symbol.MethodSymbol constructor, JCTree.JCClassDecl enclosingClass) {
         var invocationArgs = simpleTypes.resolveTypes(invocation.getArguments(), enclosingClass);
         var constructorParams = constructor.getParameters();
         var commonTypes = simpleTypes.matchTypeVariableSymbolToArgs(typeVariable, List.from(constructorParams), invocationArgs);
@@ -129,7 +126,8 @@ public class SimpleClasses {
 
     public Optional<Type> resolveClassType(Symbol.TypeVariableSymbol typeVariable, Iterator<Type> flatReturnType, JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCStatement enclosingStatement) {
         if (enclosingStatement instanceof JCTree.JCReturn) {
-            var methodReturnType = simpleTypes.resolveClassType(enclosingMethod.getReturnType(), enclosingClass);
+            var env = simpleTypes.findClassEnv(enclosingClass);
+            var methodReturnType = simpleTypes.resolveClassType(enclosingMethod.getReturnType(), env);
             if (methodReturnType.isEmpty()) {
                 return Optional.empty();
             }
@@ -144,7 +142,8 @@ public class SimpleClasses {
                 return Optional.empty();
             }
 
-            var variableType = simpleTypes.resolveClassType(variable.vartype, enclosingClass);
+            var env = simpleTypes.findClassEnv(enclosingClass);
+            var variableType = simpleTypes.resolveClassType(variable.vartype, env);
             if (variableType.isEmpty()) {
                 return Optional.empty();
             }
@@ -154,5 +153,9 @@ public class SimpleClasses {
         }
 
         return Optional.empty();
+    }
+
+    public boolean isAssignable(Type classType, Type assign){
+        return simpleTypes.isAssignable(classType, assign);
     }
 }

@@ -17,11 +17,9 @@ public class SimpleMethods {
     private final SimpleTypes simpleTypes;
 
     public Symbol.MethodSymbol resolveMethod(@NonNull JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, @NonNull JCTree.JCMethodInvocation invocation) {
-        var invoked = invocation.getMethodSelect();
         var classEnv = simpleTypes.findClassEnv(enclosingClass);
-        var methodEnv = simpleTypes.findMethodEnv(enclosingMethod, classEnv);
-        simpleTypes.resolveEnv(methodEnv);
-        var symbol = TreeInfo.symbol(invoked);
+        simpleTypes.resolveEnv(classEnv);
+        var symbol = TreeInfo.symbol(invocation.getMethodSelect());
         return (Symbol.MethodSymbol) symbol;
     }
 
@@ -37,17 +35,11 @@ public class SimpleMethods {
         }
 
         var returnType = invoked.getReturnType();
-        if(typeVariable.asType().equals(returnType)){
-            return simpleTypes.resolveClassType(invocation, enclosingClass)
-                    .orElseThrow(() -> new IllegalArgumentException("Cannot deduce type from generic method call with matching return type"));
-        }
-
         var parameterType = resolveMethodType(typeVariable, invocation, invoked, enclosingClass);
         var flatReturnType = simpleTypes.flattenGenericType(returnType).iterator();
         var statementType = resolveMethodType(typeVariable, flatReturnType, enclosingClass, enclosingMethod, enclosingStatement);
-        return statementType
-                .map(type -> resolveMethodType(typeVariable, parameterType.orElse(null), type))
-                .orElse(resolveMethodType(typeVariable, parameterType.orElse(null)));
+        return statementType.map(type -> resolveMethodType(typeVariable, parameterType, type))
+                .orElse(resolveMethodType(typeVariable, parameterType));
     }
 
     private Type resolveMethodType(Symbol.TypeVariableSymbol typeVariable, Type parameterType, Type type) {
@@ -62,7 +54,7 @@ public class SimpleMethods {
         return Objects.requireNonNullElse(parameterType, simpleTypes.erase(typeVariable));
     }
 
-    private Optional<Type> resolveMethodType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCMethodInvocation invocation, Symbol.MethodSymbol invoked, JCTree.JCClassDecl enclosingClass) {
+    private Type resolveMethodType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCMethodInvocation invocation, Symbol.MethodSymbol invoked, JCTree.JCClassDecl enclosingClass) {
         var invocationArgs = simpleTypes.resolveTypes(invocation.getArguments(), enclosingClass);
         var constructorParams = invoked.getParameters();
         var commonTypes = simpleTypes.matchTypeVariableSymbolToArgs(typeVariable, List.from(constructorParams), invocationArgs);
@@ -71,7 +63,8 @@ public class SimpleMethods {
 
     private Optional<Type> resolveMethodType(Symbol.TypeVariableSymbol typeVariable, Iterator<Type> flatReturnType, JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCStatement enclosingStatement) {
         if (enclosingStatement instanceof JCTree.JCReturn) {
-            var methodReturnType = simpleTypes.resolveClassType(enclosingMethod.getReturnType(), enclosingClass);
+            var env = simpleTypes.findClassEnv(enclosingClass);
+            var methodReturnType = simpleTypes.resolveClassType(enclosingMethod.getReturnType(), env);
             if (methodReturnType.isEmpty()) {
                 return Optional.empty();
             }
@@ -82,11 +75,12 @@ public class SimpleMethods {
 
         if (enclosingStatement instanceof JCTree.JCVariableDecl) {
             var variable = (JCTree.JCVariableDecl) enclosingStatement;
-            if(variable.isImplicitlyTyped()){
+            if (variable.isImplicitlyTyped()) {
                 return Optional.empty();
             }
 
-            var variableType = simpleTypes.resolveClassType(variable.vartype, enclosingClass);
+            var env = simpleTypes.findClassEnv(enclosingClass);
+            var variableType = simpleTypes.resolveClassType(variable.vartype, env);
             if (variableType.isEmpty()) {
                 return Optional.empty();
             }

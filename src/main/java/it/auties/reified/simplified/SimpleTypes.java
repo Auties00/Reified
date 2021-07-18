@@ -1,5 +1,6 @@
 package it.auties.reified.simplified;
 
+import com.sun.source.tree.Tree;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.TypeTag;
@@ -49,13 +50,31 @@ public class SimpleTypes {
         return Assert.checkNonNull(type, "Reified Methods: Cannot compile as the type element associated with the class " + clazz.getName() + " doesn't exist!");
     }
 
-    public Optional<Type> resolveClassType(JCTree argument, JCTree.JCClassDecl enclosingClass) {
-        var env = findClassEnv(enclosingClass);
-        return Optional.ofNullable(attr.attribType(argument, env)).filter(this::isValid);
+    public void resolveEnv(Env<AttrContext> attrContextEnv){
+        attr.attrib(attrContextEnv);
+    }
+
+    public void resolveClass(JCTree.JCClassDecl clazz){
+        attr.attribClass(clazz.pos(), clazz.sym);
+    }
+
+    public List<Type> resolveTypes(List<? extends JCTree> expressions, JCTree.JCClassDecl clazz){
+        var env = findClassEnv(clazz);
+        return expressions.stream()
+                .map(type -> attr.attribExpr(type, env))
+                .collect(List.collector());
     }
 
     public boolean isValid(Type type) {
         return !type.isErroneous();
+    }
+
+    public Optional<Env<AttrContext>> findClassEnv(Tree tree){
+        if(!(tree instanceof JCTree.JCClassDecl)){
+            return Optional.empty();
+        }
+
+        return Optional.of(findClassEnv((JCTree.JCClassDecl) tree));
     }
 
     public Env<AttrContext> findClassEnv(JCTree.JCClassDecl enclosingClass) {
@@ -66,26 +85,17 @@ public class SimpleTypes {
         return enter.getClassEnv(type.asElement());
     }
 
-    public Env<AttrContext> findMethodEnv(JCTree.JCMethodDecl method, Env<AttrContext> env){
-        if(method == null){
-            return env;
+    public Type commonType(List<Type> input) {
+        var type = types.lub(input);
+        if (type.getTag() == TypeTag.BOT || !isValid(type)) {
+            return null;
         }
 
-        return memberEnter.getMethodEnv(method, env);
-    }
-
-    public Optional<Type> commonType(List<Type> input) {
-        return Optional.ofNullable(types.lub(input))
-                .filter(type -> type.getTag() != TypeTag.BOT)
-                .filter(this::isValid);
+        return type;
     }
 
     public Type erase(Symbol.TypeVariableSymbol typeVariableSymbol) {
         return typeVariableSymbol.erasure(types);
-    }
-
-    public Type erase(Type type) {
-        return types.erasure(type);
     }
 
     public Type boxed(Type type){
@@ -109,12 +119,13 @@ public class SimpleTypes {
     }
 
     public List<Type> matchTypeParamToTypedArg(Symbol.TypeVariableSymbol typeParameter, List<Symbol.TypeVariableSymbol> invoked, List<JCTree.JCExpression> arguments, JCTree.JCClassDecl enclosingClass) {
+        var env = findClassEnv(enclosingClass);
         return invoked.stream()
                 .filter(typeParameter::equals)
                 .map(invoked::indexOf)
                 .map(index -> arguments.getSafe(index))
                 .onlyPresent()
-                .map(candidate -> resolveClassType(candidate, enclosingClass))
+                .map(arg -> resolveClassType(arg, env))
                 .onlyPresent()
                 .map(this::boxed)
                 .collect(List.collector());
@@ -128,9 +139,13 @@ public class SimpleTypes {
                 .collect(List.collector());
     }
 
+    public Optional<Type> resolveClassType(JCTree argument, Env<AttrContext> env) {
+        return Optional.ofNullable(attr.attribType(argument, env)).filter(this::isValid);
+    }
+
     public List<JCTree.JCExpression> flattenGenericType(JCTree.JCExpression type){
         if(!(type instanceof JCTree.JCTypeApply)){
-            return List.nil();
+            return List.of(type);
         }
 
         var apply = (JCTree.JCTypeApply) type;
@@ -142,13 +157,13 @@ public class SimpleTypes {
 
     public List<Type> flattenGenericType(Type type){
         if(!type.isParameterized()){
-            return List.nil();
+            return List.of(type);
         }
 
         return flattenGenericType(type.getTypeArguments());
     }
 
-    public List<Type> flattenGenericType(List<Type> types){
+    public List<Type> flattenGenericType(List<? extends Type> types){
         return types.stream()
                 .map(this::flattenGenericType)
                 .flatMap(Collection::stream)
@@ -169,18 +184,11 @@ public class SimpleTypes {
         return Optional.empty();
     }
 
-    public void resolveEnv(Env<AttrContext> attrContextEnv){
-        attr.attrib(attrContextEnv);
+    public boolean isAssignable(Type assignable, Type assigned){
+        return types.isSubtype(assignable, assigned);
     }
 
     public boolean isReified(Symbol typeSymbol) {
        return typeSymbol.getAnnotation(Reified.class) != null;
-    }
-
-    public List<Type> resolveTypes(List<? extends JCTree> expressions, JCTree.JCClassDecl clazz){
-        var env = findClassEnv(clazz);
-        return expressions.stream()
-                .map(type -> attr.attribExpr(type, env))
-                .collect(List.collector());
     }
 }
