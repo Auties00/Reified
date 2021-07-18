@@ -13,6 +13,48 @@ If a non annotated type parameter is needed to determine the type of annotated o
 the same process to said parameters to determine the first.
 No plugin in available for IntelliJ at the moment to make the linter work, but it will come in the future.
 
+### How to install
+
+#### Maven
+Add this dependency to your dependencies in the pom:
+```xml
+<dependencies>
+    <dependency>
+        <groupId>com.github.auties00</groupId>
+        <artifactId>reified</artifactId>
+        <version>1.10</version>
+    </dependency>
+</dependencies>
+
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <version>3.8.1</version>
+            <configuration>
+                <source>11</source>
+                <target>11</target>
+                <annotationProcessorPaths>
+                    <path>
+                        <groupId>com.github.auties00</groupId>
+                        <artifactId>reified</artifactId>
+                        <version>1.10-SNAPSHOT</version>
+                    </path>
+                </annotationProcessorPaths>
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
+```
+
+#### Gradle
+Add this dependency to your build.gradle:
+```groovy
+implementation 'com.github.auties00:reified:1.10'
+annotationProcessor 'com.github.auties00:reified:1.10'
+```
+
 ### Example
 
 With reified:
