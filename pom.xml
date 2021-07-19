@@ -4,7 +4,7 @@
 
     <groupId>com.github.auties00</groupId>
     <artifactId>reified</artifactId>
-    <version>1.12-SNAPSHOT</version>
+    <version>1.12</version>
     <name>${project.groupId}:${project.artifactId}</name>
     <description>Reified methods and classes for Java</description>
     <url>https://github.com/Auties00/reified</url>
@@ -24,7 +24,7 @@
     <scm>
         <url>https://github.com/Auties00/reified/tree/master</url>
         <connection>scm:git:https://github.com/Auties00/reified.git</connection>
-      <tag>reified-1.11</tag>
+      <tag>reified-1.12</tag>
   </scm>
     <distributionManagement>
         <snapshotRepository>
