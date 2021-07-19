@@ -22,7 +22,7 @@ Add this dependency to your dependencies in the pom:
     <dependency>
         <groupId>com.github.auties00</groupId>
         <artifactId>reified</artifactId>
-        <version>1.10</version>
+        <version>1.11</version>
     </dependency>
 </dependencies>
 
@@ -39,7 +39,7 @@ Add this dependency to your dependencies in the pom:
                     <path>
                         <groupId>com.github.auties00</groupId>
                         <artifactId>reified</artifactId>
-                        <version>1.10-SNAPSHOT</version>
+                        <version>1.11</version>
                     </path>
                 </annotationProcessorPaths>
             </configuration>
@@ -51,8 +51,8 @@ Add this dependency to your dependencies in the pom:
 #### Gradle
 Add this dependency to your build.gradle:
 ```groovy
-implementation 'com.github.auties00:reified:1.10'
-annotationProcessor 'com.github.auties00:reified:1.10'
+implementation 'com.github.auties00:reified:1.11'
+annotationProcessor 'com.github.auties00:reified:1.11'
 ```
 
 ### Example

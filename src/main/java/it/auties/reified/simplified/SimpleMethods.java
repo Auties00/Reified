@@ -57,7 +57,7 @@ public class SimpleMethods {
     private Type resolveMethodType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCMethodInvocation invocation, Symbol.MethodSymbol invoked, JCTree.JCClassDecl enclosingClass) {
         var invocationArgs = simpleTypes.resolveTypes(invocation.getArguments(), enclosingClass);
         var constructorParams = invoked.getParameters();
-        var commonTypes = simpleTypes.matchTypeVariableSymbolToArgs(typeVariable, List.from(constructorParams), invocationArgs);
+        var commonTypes = simpleTypes.matchTypeVariableSymbolToArgs(typeVariable, constructorParams, invocationArgs);
         return simpleTypes.commonType(commonTypes);
     }
 

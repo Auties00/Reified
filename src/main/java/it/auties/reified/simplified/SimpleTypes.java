@@ -118,11 +118,11 @@ public class SimpleTypes {
         return ((Type.WildcardType) type).type;
     }
 
-    public List<Type> matchTypeParamToTypedArg(Symbol.TypeVariableSymbol typeParameter, List<Symbol.TypeVariableSymbol> invoked, List<JCTree.JCExpression> arguments, JCTree.JCClassDecl enclosingClass) {
+    public List<Type> matchTypeParamToTypedArg(Symbol.TypeVariableSymbol typeParameter, List<Symbol.TypeVariableSymbol> parameters, List<JCTree.JCExpression> arguments, JCTree.JCClassDecl enclosingClass) {
         var env = findClassEnv(enclosingClass);
-        return invoked.stream()
+        return parameters.stream()
                 .filter(typeParameter::equals)
-                .map(invoked::indexOf)
+                .map(parameters::indexOf)
                 .map(index -> arguments.getSafe(index))
                 .onlyPresent()
                 .map(arg -> resolveClassType(arg, env))
@@ -138,6 +138,21 @@ public class SimpleTypes {
                 .map(this::boxed)
                 .collect(List.collector());
     }
+
+    /*
+    private List<Type> determineRealArguments(List<Symbol.VarSymbol> parameters, List<Type> arguments) {
+        var argsSize = arguments.size();
+        var paramsSize = parameters.size();
+        if (argsSize == paramsSize) {
+            return arguments;
+        }
+
+        Assert.check(argsSize > paramsSize, String.format("Erroneous method invocation: %s -/> %s", parameters, arguments));
+        var realArguments = arguments.subList(argsSize - paramsSize, arguments.size());
+        return List.from(realArguments);
+    }
+
+     */
 
     public Optional<Type> resolveClassType(JCTree argument, Env<AttrContext> env) {
         return Optional.ofNullable(attr.attribType(argument, env)).filter(this::isValid);
