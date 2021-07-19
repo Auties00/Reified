@@ -2,9 +2,10 @@ package it.auties.reified.simplified;
 
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
+import com.sun.tools.javac.comp.Lower;
+import com.sun.tools.javac.comp.TransTypes;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
-import com.sun.tools.javac.util.List;
 import lombok.AllArgsConstructor;
 import lombok.NonNull;
 
@@ -15,10 +16,12 @@ import java.util.Optional;
 @AllArgsConstructor
 public class SimpleMethods {
     private final SimpleTypes simpleTypes;
+    private final Lower lower;
 
     public Symbol.MethodSymbol resolveMethod(@NonNull JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, @NonNull JCTree.JCMethodInvocation invocation) {
         var classEnv = simpleTypes.findClassEnv(enclosingClass);
-        simpleTypes.resolveEnv(classEnv);
+        var methodEnv = simpleTypes.findMethodEnv(enclosingMethod, classEnv);
+        simpleTypes.resolveEnv(methodEnv);
         var symbol = TreeInfo.symbol(invocation.getMethodSelect());
         return (Symbol.MethodSymbol) symbol;
     }
@@ -26,12 +29,12 @@ public class SimpleMethods {
     public Type resolveMethodType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCMethodInvocation invocation, Symbol.MethodSymbol invoked, JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCStatement enclosingStatement) {
         var args = invocation.getTypeArguments();
         if (args != null && !args.isEmpty()) {
-            var deduced = simpleTypes.matchTypeParamToTypedArg(typeVariable, invoked.getTypeParameters(), args, enclosingClass);
+            var deduced = simpleTypes.eraseTypeVariableFromTypeParameters(typeVariable, invoked.getTypeParameters(), args, enclosingClass);
             if(deduced.isEmpty()){
                 throw new IllegalArgumentException("Cannot resolve method type for explicit type variable");
             }
 
-            return deduced.head;
+            return simpleTypes.resolveWildCard(deduced.head);
         }
 
         var returnType = invoked.getReturnType();
@@ -51,13 +54,14 @@ public class SimpleMethods {
     }
 
     private Type resolveMethodType(Symbol.TypeVariableSymbol typeVariable, Type parameterType) {
-        return Objects.requireNonNullElse(parameterType, simpleTypes.erase(typeVariable));
+        return Objects.requireNonNullElse(simpleTypes.resolveWildCard(parameterType), simpleTypes.erase(typeVariable));
     }
 
     private Type resolveMethodType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCMethodInvocation invocation, Symbol.MethodSymbol invoked, JCTree.JCClassDecl enclosingClass) {
-        var invocationArgs = simpleTypes.resolveTypes(invocation.getArguments(), enclosingClass);
+        var varArgs = invocation.varargsElement;
         var constructorParams = invoked.getParameters();
-        var commonTypes = simpleTypes.matchTypeVariableSymbolToArgs(typeVariable, constructorParams, invocationArgs);
+        var invocationArgs = simpleTypes.resolveTypes(invocation.getArguments(), enclosingClass);
+        var commonTypes = simpleTypes.eraseTypeVariableFromArguments(typeVariable, constructorParams, invocationArgs, invoked.isVarArgs());
         return simpleTypes.commonType(commonTypes);
     }
 

@@ -79,7 +79,8 @@ public class SimpleClasses {
 
     public Symbol.MethodSymbol resolveClass(@NonNull JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, @NonNull JCTree.JCNewClass invocation) {
         var classEnv = simpleTypes.findClassEnv(enclosingClass);
-        simpleTypes.resolveEnv(classEnv);
+        var methodEnv = simpleTypes.findMethodEnv(enclosingMethod, classEnv);
+        simpleTypes.resolveEnv(methodEnv);
         var symbol = TreeInfo.symbolFor(invocation);
         return (Symbol.MethodSymbol) symbol;
     }
@@ -89,12 +90,12 @@ public class SimpleClasses {
         var invokedTypeArgs = classType.getTypeParameters();
         var invocationTypeArgs = simpleTypes.flattenGenericType(invocation.getIdentifier());
         if (invocationTypeArgs != null && !invocationTypeArgs.isEmpty()) {
-            var deduced = simpleTypes.matchTypeParamToTypedArg(typeVariable, invokedTypeArgs, invocationTypeArgs, enclosingClass);
+            var deduced = simpleTypes.eraseTypeVariableFromTypeParameters(typeVariable, invokedTypeArgs, invocationTypeArgs, enclosingClass);
             if(deduced.isEmpty()){
                 throw new IllegalArgumentException("Cannot resolve class type for explicit type variable");
             }
 
-            return deduced.head;
+            return simpleTypes.resolveWildCard(deduced.head);
         }
 
         var parameterType = resolveClassType(typeVariable, invocation, invoked, enclosingClass);
@@ -114,13 +115,14 @@ public class SimpleClasses {
     }
 
     private Type resolveClassType(Symbol.TypeVariableSymbol typeVariable, Type parameterType) {
-        return Objects.requireNonNullElse(parameterType, simpleTypes.erase(typeVariable));
+        return Objects.requireNonNullElse(simpleTypes.resolveWildCard(parameterType), simpleTypes.erase(typeVariable));
     }
 
     private Type resolveClassType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCNewClass invocation, Symbol.MethodSymbol constructor, JCTree.JCClassDecl enclosingClass) {
+        var varArgs = invocation.varargsElement;
         var invocationArgs = simpleTypes.resolveTypes(invocation.getArguments(), enclosingClass);
         var constructorParams = constructor.getParameters();
-        var commonTypes = simpleTypes.matchTypeVariableSymbolToArgs(typeVariable, List.from(constructorParams), invocationArgs);
+        var commonTypes = simpleTypes.eraseTypeVariableFromArguments(typeVariable, List.from(constructorParams), invocationArgs, constructor.isVarArgs());
         return simpleTypes.commonType(commonTypes);
     }
 

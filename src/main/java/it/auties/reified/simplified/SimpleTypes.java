@@ -7,6 +7,7 @@ import com.sun.tools.javac.code.TypeTag;
 import com.sun.tools.javac.code.Types;
 import com.sun.tools.javac.comp.*;
 import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.util.Assert;
 import com.sun.tools.javac.util.List;
 import it.auties.reified.annotation.Reified;
@@ -27,7 +28,6 @@ import java.util.Optional;
 import java.util.stream.IntStream;
 
 @AllArgsConstructor
-@Data
 @ExtensionMethod({CollectionUtils.class, StreamUtils.class})
 public class SimpleTypes {
     private final ProcessingEnvironment environment;
@@ -85,6 +85,14 @@ public class SimpleTypes {
         return enter.getClassEnv(type.asElement());
     }
 
+    public Env<AttrContext> findMethodEnv(JCTree.JCMethodDecl method, Env<AttrContext> env){
+        if(method == null) {
+            return env;
+        }
+
+        return memberEnter.getMethodEnv(method, env);
+    }
+
     public Type commonType(List<Type> input) {
         var type = types.lub(input);
         if (type.getTag() == TypeTag.BOT || !isValid(type)) {
@@ -118,7 +126,7 @@ public class SimpleTypes {
         return ((Type.WildcardType) type).type;
     }
 
-    public List<Type> matchTypeParamToTypedArg(Symbol.TypeVariableSymbol typeParameter, List<Symbol.TypeVariableSymbol> parameters, List<JCTree.JCExpression> arguments, JCTree.JCClassDecl enclosingClass) {
+    public List<Type> eraseTypeVariableFromTypeParameters(Symbol.TypeVariableSymbol typeParameter, List<Symbol.TypeVariableSymbol> parameters, List<JCTree.JCExpression> arguments, JCTree.JCClassDecl enclosingClass) {
         var env = findClassEnv(enclosingClass);
         return parameters.stream()
                 .filter(typeParameter::equals)
@@ -127,32 +135,44 @@ public class SimpleTypes {
                 .onlyPresent()
                 .map(arg -> resolveClassType(arg, env))
                 .onlyPresent()
-                .map(this::boxed)
+                .map(this::parseArgument)
                 .collect(List.collector());
     }
 
-    public List<Type> matchTypeVariableSymbolToArgs(Symbol.TypeVariableSymbol typeParameter, List<Symbol.VarSymbol> parameters, List<Type> arguments){
-        return IntStream.range(0, parameters.size())
-                .filter(index -> Objects.equals(typeParameter, parameters.get(index).asType().asElement()))
+    public List<Type> eraseTypeVariableFromArguments(Symbol.TypeVariableSymbol typeParameter, List<Symbol.VarSymbol> parameters, List<Type> arguments, boolean varArgs){
+        return IntStream.range(0, arguments.size())
+                .filter(index -> matchTypeVariableToParameter(typeParameter, parameters, index, varArgs))
                 .mapToObj(arguments::get)
-                .map(this::boxed)
+                .map(this::parseArgument)
                 .collect(List.collector());
     }
 
-    /*
-    private List<Type> determineRealArguments(List<Symbol.VarSymbol> parameters, List<Type> arguments) {
-        var argsSize = arguments.size();
-        var paramsSize = parameters.size();
-        if (argsSize == paramsSize) {
-            return arguments;
+    private boolean matchTypeVariableToParameter(Symbol.TypeVariableSymbol typeParameter, List<Symbol.VarSymbol> parameters, int index, boolean varArgs) {
+        var param = getVarArgsParam(parameters, index, varArgs);
+        if(types.isArray(param)){
+            var arrayType = (Type.ArrayType) param;
+            return typeParameter.equals(arrayType.getComponentType().asElement());
         }
 
-        Assert.check(argsSize > paramsSize, String.format("Erroneous method invocation: %s -/> %s", parameters, arguments));
-        var realArguments = arguments.subList(argsSize - paramsSize, arguments.size());
-        return List.from(realArguments);
+        return typeParameter.equals(param.asElement());
     }
 
-     */
+    private Type getVarArgsParam(List<Symbol.VarSymbol> parameters, int index, boolean varArgs) {
+        if(!varArgs || index < parameters.size() - 1){
+            return parameters.get(index).asType();
+        }
+
+        return parameters.last().asType();
+    }
+
+    private Type parseArgument(Type type){
+        if(types.isArray(type)){
+            var arrayType = (Type.ArrayType) type;
+            return boxed(arrayType.getComponentType());
+        }
+
+        return boxed(type);
+    }
 
     public Optional<Type> resolveClassType(JCTree argument, Env<AttrContext> env) {
         return Optional.ofNullable(attr.attribType(argument, env)).filter(this::isValid);

@@ -68,11 +68,12 @@ public class ReifiedProcessor extends AbstractProcessor {
         var types = Types.instance(context);
         var treeMaker = TreeMaker.instance(context);
         var memberEnter = MemberEnter.instance(context);
+        var lower = Lower.instance(context);
 
         this.trees = JavacTrees.instance(context);
         this.simpleTypes = new SimpleTypes(processingEnv, types, attr, enter, memberEnter);
         this.simpleClasses = new SimpleClasses(simpleTypes);
-        this.simpleMethods = new SimpleMethods(simpleTypes);
+        this.simpleMethods = new SimpleMethods(simpleTypes, lower);
         this.simpleMaker = new SimpleMaker(simpleTypes, treeMaker);
         this.environment = environment;
     }
@@ -141,8 +142,9 @@ public class ReifiedProcessor extends AbstractProcessor {
     private void processing() {
         this.reifiedResults = new ListBuffer<>();
         reifiedDeclarations.forEach(this::processTypeParameter);
-        reifiedResults.forEach(this::applyParameter);
         reifiedDeclarations.forEach(simpleMaker::processMembers);
+        reifiedResults.forEach(this::applyParameter);
+        reifiedDeclarations.stream().map(ReifiedDeclaration::enclosingClass).forEach(System.err::println);
     }
 
     private void applyParameter(ReifiedResult<?> result) {
@@ -189,7 +191,7 @@ public class ReifiedProcessor extends AbstractProcessor {
                 return simpleTypes.erase(reifiedDeclaration.typeParameter());
             case TYPEAPPLY:
                 var typeApply = (JCTree.JCTypeApply) extendClause;
-                var types = simpleTypes.matchTypeParamToTypedArg(reifiedDeclaration.typeParameter(), enclosingClass.sym.getTypeParameters(), typeApply.getTypeArguments(), childClass);
+                var types = simpleTypes.eraseTypeVariableFromTypeParameters(reifiedDeclaration.typeParameter(), enclosingClass.sym.getTypeParameters(), typeApply.getTypeArguments(), childClass);
                 return Objects.requireNonNullElse(simpleTypes.commonType(types), simpleTypes.erase(reifiedDeclaration.typeParameter()));
             default:
                 throw new IllegalArgumentException("Unsupported tag for child class type: " + extendClause.getTag().name());
@@ -242,7 +244,7 @@ public class ReifiedProcessor extends AbstractProcessor {
                 inv.enclosingStatement()
         );
 
-        var literal = createClassLiteral(simpleTypes.resolveWildCard(type), clazz, method);
+        var literal = createClassLiteral(type, clazz, method);
         return new ReifiedResult<>(invocation, literal);
     }
 
@@ -277,7 +279,7 @@ public class ReifiedProcessor extends AbstractProcessor {
 
     public JCTree.JCExpression createClassLiteral(Type type, JCTree.JCClassDecl clazz, JCTree.JCMethodDecl method){
         if(!simpleTypes.isGeneric(type)){
-            return simpleMaker.classLiteral(simpleTypes.resolveWildCard(type));
+            return simpleMaker.classLiteral(type);
         }
 
         var typeSymbol = (Symbol.TypeVariableSymbol) type.asElement().baseSymbol();
