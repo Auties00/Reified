@@ -58,7 +58,6 @@ public class SimpleMethods {
     }
 
     private Type resolveMethodType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCMethodInvocation invocation, Symbol.MethodSymbol invoked, JCTree.JCClassDecl enclosingClass) {
-        var varArgs = invocation.varargsElement;
         var constructorParams = invoked.getParameters();
         var invocationArgs = simpleTypes.resolveTypes(invocation.getArguments(), enclosingClass);
         var commonTypes = simpleTypes.eraseTypeVariableFromArguments(typeVariable, constructorParams, invocationArgs, invoked.isVarArgs());

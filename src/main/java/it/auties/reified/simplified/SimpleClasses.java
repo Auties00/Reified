@@ -119,7 +119,6 @@ public class SimpleClasses {
     }
 
     private Type resolveClassType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCNewClass invocation, Symbol.MethodSymbol constructor, JCTree.JCClassDecl enclosingClass) {
-        var varArgs = invocation.varargsElement;
         var invocationArgs = simpleTypes.resolveTypes(invocation.getArguments(), enclosingClass);
         var constructorParams = constructor.getParameters();
         var commonTypes = simpleTypes.eraseTypeVariableFromArguments(typeVariable, List.from(constructorParams), invocationArgs, constructor.isVarArgs());
