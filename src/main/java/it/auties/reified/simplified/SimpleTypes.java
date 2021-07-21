@@ -1,20 +1,15 @@
 package it.auties.reified.simplified;
 
 import com.sun.source.tree.Tree;
-import com.sun.tools.javac.code.Symbol;
-import com.sun.tools.javac.code.Type;
-import com.sun.tools.javac.code.TypeTag;
-import com.sun.tools.javac.code.Types;
+import com.sun.tools.javac.code.*;
 import com.sun.tools.javac.comp.*;
 import com.sun.tools.javac.tree.JCTree;
-import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.util.Assert;
 import com.sun.tools.javac.util.List;
 import it.auties.reified.annotation.Reified;
 import it.auties.reified.util.CollectionUtils;
 import it.auties.reified.util.StreamUtils;
 import lombok.AllArgsConstructor;
-import lombok.Data;
 import lombok.experimental.ExtensionMethod;
 
 import javax.annotation.processing.ProcessingEnvironment;
@@ -23,7 +18,6 @@ import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeMirror;
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
@@ -225,5 +219,10 @@ public class SimpleTypes {
 
     public boolean isReified(Symbol typeSymbol) {
        return typeSymbol.getAnnotation(Reified.class) != null;
+    }
+
+
+    public boolean isRecord(JCTree.JCModifiers mods) {
+        return (mods.flags & Flags.RECORD) == Flags.RECORD;
     }
 }

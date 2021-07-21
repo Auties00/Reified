@@ -71,7 +71,7 @@ public class ReifiedProcessor extends AbstractProcessor {
         this.simpleTypes = new SimpleTypes(processingEnv, types, attr, enter, memberEnter);
         this.simpleClasses = new SimpleClasses(simpleTypes);
         this.simpleMethods = new SimpleMethods(simpleTypes);
-        this.simpleMaker = new SimpleMaker(simpleTypes, treeMaker);
+        this.simpleMaker = new SimpleMaker(treeMaker, simpleClasses, simpleTypes);
         this.environment = environment;
     }
 

@@ -1,16 +1,10 @@
 package it.auties.reified.scanner;
 
 import com.sun.source.tree.ClassTree;
-import com.sun.source.tree.NewClassTree;
 import com.sun.source.util.TreeScanner;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
-import it.auties.reified.model.ReifiedDeclaration;
-import it.auties.reified.simplified.SimpleClasses;
-import it.auties.reified.simplified.SimpleMethods;
 import it.auties.reified.simplified.SimpleTypes;
-import lombok.AllArgsConstructor;
-import lombok.RequiredArgsConstructor;
 
 import java.util.ArrayList;
 import java.util.List;

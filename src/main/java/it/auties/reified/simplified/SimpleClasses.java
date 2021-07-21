@@ -17,6 +17,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import static com.sun.tools.javac.code.Flags.GENERATEDCONSTR;
+import static com.sun.tools.javac.code.Flags.RECORD;
 
 @AllArgsConstructor
 @ExtensionMethod(StreamUtils.class)
@@ -65,16 +66,27 @@ public class SimpleClasses {
     public List<JCTree.JCMethodDecl> findConstructors(JCTree.JCClassDecl tree) {
         return tree.getMembers()
                 .stream()
-                .filter(method -> method instanceof JCTree.JCMethodDecl)
-                .map(method -> (JCTree.JCMethodDecl) method)
                 .filter(TreeInfo::isConstructor)
+                .map(constructor -> (JCTree.JCMethodDecl) constructor)
                 .map(this::removeDefaultConstructorFlag)
                 .collect(List.collector());
     }
 
+    public boolean isRecord(JCTree.JCClassDecl enclosingClass) {
+        return simpleTypes.isRecord(enclosingClass.mods);
+    }
+
     private JCTree.JCMethodDecl removeDefaultConstructorFlag(JCTree.JCMethodDecl constructor) {
+        if(simpleTypes.isRecord(constructor.mods)){
+            return constructor;
+        }
+
         constructor.mods.flags &= ~GENERATEDCONSTR;
         return constructor;
+    }
+
+    public boolean isRecord(JCTree.JCMethodDecl enclosingClass) {
+        return (enclosingClass.mods.flags & RECORD) == RECORD;
     }
 
     public Optional<Symbol.MethodSymbol> resolveClass(@NonNull JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, @NonNull JCTree.JCNewClass invocation) {
