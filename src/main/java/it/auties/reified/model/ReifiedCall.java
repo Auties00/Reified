@@ -1,19 +1,20 @@
 package it.auties.reified.model;
 
 import com.sun.tools.javac.code.Symbol;
+import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.tree.JCTree;
-import lombok.NonNull;
-import lombok.ToString;
-import lombok.Value;
+import lombok.*;
 import lombok.experimental.Accessors;
 
-@Value
+@RequiredArgsConstructor
+@Data
 @Accessors(fluent = true)
 @ToString
 public class ReifiedCall {
-    @NonNull JCTree.JCPolyExpression invocation;
-    @NonNull Symbol.MethodSymbol invoked;
-    @NonNull JCTree.JCClassDecl enclosingClass;
-    JCTree.JCMethodDecl enclosingMethod;
-    JCTree.JCStatement enclosingStatement;
+    private final @NonNull JCTree.JCPolyExpression invocation;
+    private final @NonNull Symbol.MethodSymbol invoked;
+    private final @NonNull JCTree.JCClassDecl enclosingClass;
+    private final JCTree.JCMethodDecl enclosingMethod;
+    private final JCTree.JCStatement enclosingStatement;
+    private Type reifiedType;
 }

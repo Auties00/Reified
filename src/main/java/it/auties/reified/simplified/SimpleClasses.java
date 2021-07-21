@@ -77,12 +77,15 @@ public class SimpleClasses {
         return constructor;
     }
 
-    public Symbol.MethodSymbol resolveClass(@NonNull JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, @NonNull JCTree.JCNewClass invocation) {
+    public Optional<Symbol.MethodSymbol> resolveClass(@NonNull JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, @NonNull JCTree.JCNewClass invocation) {
         var classEnv = simpleTypes.findClassEnv(enclosingClass);
         var methodEnv = simpleTypes.findMethodEnv(enclosingMethod, classEnv);
         simpleTypes.resolveEnv(methodEnv);
-        var symbol = TreeInfo.symbolFor(invocation);
-        return (Symbol.MethodSymbol) symbol;
+        if (!(invocation.constructor instanceof Symbol.MethodSymbol)) {
+            return Optional.empty();
+        }
+
+        return Optional.of((Symbol.MethodSymbol) invocation.constructor);
     }
 
     public Type resolveClassType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCNewClass invocation, Symbol.MethodSymbol invoked, JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCStatement enclosingStatement) {

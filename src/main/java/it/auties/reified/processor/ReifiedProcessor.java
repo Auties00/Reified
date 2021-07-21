@@ -15,7 +15,6 @@ import it.auties.reified.annotation.Reified;
 import it.auties.reified.model.ReifiedCall;
 import it.auties.reified.model.ReifiedCandidate;
 import it.auties.reified.model.ReifiedDeclaration;
-import it.auties.reified.model.ReifiedResult;
 import it.auties.reified.scanner.ClassInitializationScanner;
 import it.auties.reified.scanner.ExtendedClassesScanner;
 import it.auties.reified.scanner.MethodInvocationScanner;
@@ -33,7 +32,6 @@ import javax.lang.model.element.TypeElement;
 import java.util.Collection;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @SupportedAnnotationTypes(Reified.PATH)
 @SupportedSourceVersion(SourceVersion.RELEASE_11)
@@ -46,7 +44,7 @@ public class ReifiedProcessor extends AbstractProcessor {
     private Trees trees;
     private RoundEnvironment environment;
     private List<ReifiedDeclaration> reifiedDeclarations;
-    private ListBuffer<ReifiedResult<?>> reifiedResults;
+    private ListBuffer<ReifiedCall> reifiedResults;
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
@@ -68,12 +66,11 @@ public class ReifiedProcessor extends AbstractProcessor {
         var types = Types.instance(context);
         var treeMaker = TreeMaker.instance(context);
         var memberEnter = MemberEnter.instance(context);
-        var lower = Lower.instance(context);
 
         this.trees = JavacTrees.instance(context);
         this.simpleTypes = new SimpleTypes(processingEnv, types, attr, enter, memberEnter);
         this.simpleClasses = new SimpleClasses(simpleTypes);
-        this.simpleMethods = new SimpleMethods(simpleTypes, lower);
+        this.simpleMethods = new SimpleMethods(simpleTypes);
         this.simpleMaker = new SimpleMaker(simpleTypes, treeMaker);
         this.environment = environment;
     }
@@ -144,21 +141,21 @@ public class ReifiedProcessor extends AbstractProcessor {
         reifiedDeclarations.forEach(this::processTypeParameter);
         reifiedDeclarations.forEach(simpleMaker::processMembers);
         reifiedResults.forEach(this::applyParameter);
-        reifiedDeclarations.stream().map(ReifiedDeclaration::enclosingClass).forEach(System.err::println);
     }
 
-    private void applyParameter(ReifiedResult<?> result) {
-        switch (result.caller().getTag()){
+    private void applyParameter(ReifiedCall call) {
+        var literal = createClassLiteral(call.reifiedType(), call.enclosingClass(), call.enclosingMethod());
+        switch (call.invocation().getTag()){
             case NEWCLASS:
-                var newClass = (JCTree.JCNewClass) result.caller();
-                newClass.args = newClass.args.prepend(result.generated());
+                var newClass = (JCTree.JCNewClass) call.invocation();
+                newClass.args = newClass.args.prepend(literal);
                 break;
             case APPLY:
-                var methodInv = (JCTree.JCMethodInvocation) result.caller();
-                methodInv.args = methodInv.args.prepend(result.generated());
+                var methodInv = (JCTree.JCMethodInvocation) call.invocation();
+                methodInv.args = methodInv.args.prepend(literal);
                 break;
             default:
-                throw new IllegalArgumentException("Cannot apply parameter to unknown tag: " + result.caller().getTag().name());
+                throw new IllegalArgumentException("Cannot apply parameter to unknown tag: " + call.invocation().getTag().name());
         }
     }
 
@@ -202,8 +199,9 @@ public class ReifiedProcessor extends AbstractProcessor {
         var scanner = new ExtendedClassesScanner(superClass, simpleTypes);
         return environment.getRootElements()
                 .stream()
-                .map(trees::getTree)
-                .map(tree -> (JCTree.JCClassDecl) tree)
+                .map(element -> simpleTypes.findClassEnv(trees.getTree(element)))
+                .onlyPresent()
+                .map(env -> env.tree)
                 .map(scanner::scan)
                 .flatMap(Collection::stream)
                 .collect(List.collector());
@@ -226,11 +224,11 @@ public class ReifiedProcessor extends AbstractProcessor {
                 .stream()
                 .map(methodScanner::scan)
                 .flatMap(Collection::stream)
-                .map(methodInvocation -> processMethodParameter(reifiedDeclaration.typeParameter(), methodInvocation))
+                .peek(methodInvocation -> processMethodParameter(reifiedDeclaration.typeParameter(), methodInvocation))
                 .forEach(reifiedResults::add);
     }
 
-    private ReifiedResult<JCTree.JCMethodInvocation> processMethodParameter(Symbol.TypeVariableSymbol typeVariable, ReifiedCall inv) {
+    private void processMethodParameter(Symbol.TypeVariableSymbol typeVariable, ReifiedCall inv) {
         var invocation = (JCTree.JCMethodInvocation) inv.invocation();
         var clazz = inv.enclosingClass();
         var method = inv.enclosingMethod();
@@ -244,8 +242,7 @@ public class ReifiedProcessor extends AbstractProcessor {
                 inv.enclosingStatement()
         );
 
-        var literal = createClassLiteral(type, clazz, method);
-        return new ReifiedResult<>(invocation, literal);
+        inv.reifiedType(type);
     }
 
     private void processClassParameter(ReifiedDeclaration reifiedDeclaration) {
@@ -254,12 +251,12 @@ public class ReifiedProcessor extends AbstractProcessor {
                 .stream()
                 .map(classScanner::scan)
                 .flatMap(Collection::stream)
-                .map(classInit -> processClassParameter(reifiedDeclaration.typeParameter(), classInit))
+                .peek(classInit -> processClassParameter(reifiedDeclaration.typeParameter(), classInit))
                 .forEach(reifiedResults::add);
     }
 
 
-    private ReifiedResult<JCTree.JCNewClass> processClassParameter(Symbol.TypeVariableSymbol typeVariable, ReifiedCall init) {
+    private void processClassParameter(Symbol.TypeVariableSymbol typeVariable, ReifiedCall init) {
         var invocation = (JCTree.JCNewClass) init.invocation();
         var clazz = init.enclosingClass();
         var method = init.enclosingMethod();
@@ -273,8 +270,7 @@ public class ReifiedProcessor extends AbstractProcessor {
                 init.enclosingStatement()
         );
 
-        var literal = createClassLiteral(type, clazz, method);
-        return new ReifiedResult<>(invocation, literal);
+        init.reifiedType(type);
     }
 
     public JCTree.JCExpression createClassLiteral(Type type, JCTree.JCClassDecl clazz, JCTree.JCMethodDecl method){
@@ -288,24 +284,14 @@ public class ReifiedProcessor extends AbstractProcessor {
         }
 
         var name = type.asElement().getSimpleName();
-        if(method == null){
-            return clazz.getMembers()
-                    .stream()
-                    .filter(tree -> tree.getTag() == JCTree.Tag.VARDEF)
-                    .map(tree -> (JCTree.JCVariableDecl) tree)
-                    .filter(variable -> variable.getName().contentEquals(name))
-                    .findFirst()
-                    .map(variable -> variable.sym)
-                    .map(simpleMaker::identity)
-                    .orElseThrow(() -> new AssertionError("Nested reified parameter cannot be processed if enclosing parameters have not been processed yet"));
+        switch (typeSymbol.getEnclosingElement().getKind()){
+            case CLASS:
+                return simpleMaker.createGenericClassLiteral(clazz, name);
+            case METHOD:
+                return simpleMaker.createGenericMethodLiteral(method, name);
+            default:
+                throw new IllegalArgumentException("Cannot create class literal, unknown type symbol owner tag: " + typeSymbol.getEnclosingElement().getKind());
         }
-
-        return method.sym.getParameters()
-                .stream()
-                .filter(param -> param.getSimpleName().contentEquals(name))
-                .findFirst()
-                .map(simpleMaker::identity)
-                .orElseThrow(() -> new AssertionError("Nested reified parameter cannot be processed if enclosing parameters have not been processed yet"));
     }
 
     private void processTypeParameter(Symbol.TypeVariableSymbol typeSymbol, JCTree.JCClassDecl clazz, JCTree.JCMethodDecl method) {
@@ -319,14 +305,14 @@ public class ReifiedProcessor extends AbstractProcessor {
         return typeSymbol.owner instanceof Symbol.ClassSymbol ? null : method;
     }
 
-    private Set<JCTree> findCompilationUnits(ReifiedDeclaration reifiedDeclaration) {
+    private List<JCTree> findCompilationUnits(ReifiedDeclaration reifiedDeclaration) {
         return environment.getRootElements()
                 .stream()
                 .map(element -> simpleTypes.findClassEnv(trees.getTree(element)))
                 .onlyPresent()
                 .filter(unit -> checkClassScope(reifiedDeclaration, unit))
                 .map(env -> env.tree)
-                .collect(Collectors.toUnmodifiableSet());
+                .collect(List.collector());
     }
 
     private boolean checkClassScope(ReifiedDeclaration reifiedDeclaration, Env<AttrContext> unit) {

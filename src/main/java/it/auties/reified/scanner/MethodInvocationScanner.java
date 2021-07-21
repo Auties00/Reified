@@ -16,11 +16,11 @@ public class MethodInvocationScanner extends ReifiedScanner {
     public Void visitMethodInvocation(MethodInvocationTree node, Void unused) {
         var rawNode = (JCTree.JCMethodInvocation) node;
         var calling = simpleMethods().resolveMethod(enclosingClass(), enclosingMethod(), rawNode);
-        if (!isMatchingMethod(calling)) {
+        if (calling.filter(this::isMatchingMethod).isEmpty()) {
             return super.visitMethodInvocation(node, unused);
         }
 
-        results().add(buildResultCall(rawNode, calling));
+        results().add(buildResultCall(rawNode, calling.get()));
         return super.visitMethodInvocation(node, unused);
     }
 

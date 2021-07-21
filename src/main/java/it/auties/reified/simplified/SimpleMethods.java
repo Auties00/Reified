@@ -16,14 +16,17 @@ import java.util.Optional;
 @AllArgsConstructor
 public class SimpleMethods {
     private final SimpleTypes simpleTypes;
-    private final Lower lower;
 
-    public Symbol.MethodSymbol resolveMethod(@NonNull JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, @NonNull JCTree.JCMethodInvocation invocation) {
+    public Optional<Symbol.MethodSymbol> resolveMethod(@NonNull JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, @NonNull JCTree.JCMethodInvocation invocation) {
         var classEnv = simpleTypes.findClassEnv(enclosingClass);
         var methodEnv = simpleTypes.findMethodEnv(enclosingMethod, classEnv);
         simpleTypes.resolveEnv(methodEnv);
         var symbol = TreeInfo.symbol(invocation.getMethodSelect());
-        return (Symbol.MethodSymbol) symbol;
+        if (!(symbol instanceof Symbol.MethodSymbol)) {
+            return Optional.empty();
+        }
+
+        return Optional.of((Symbol.MethodSymbol) symbol);
     }
 
     public Type resolveMethodType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCMethodInvocation invocation, Symbol.MethodSymbol invoked, JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCStatement enclosingStatement) {

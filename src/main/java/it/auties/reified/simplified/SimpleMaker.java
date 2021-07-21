@@ -1,5 +1,6 @@
 package it.auties.reified.simplified;
 
+import com.sun.source.tree.Tree;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.tree.JCTree;
@@ -18,18 +19,18 @@ import java.util.LinkedList;
 public class SimpleMaker {
     private final SimpleTypes simpleTypes;
     private final TreeMaker treeMaker;
-    
-    public JCTree.JCIdent identity(Symbol symbol){
-        return treeMaker.Ident(symbol);
-    }
 
     public JCTree.JCExpression classLiteral(Type type){
         return treeMaker.ClassLiteral(type);
     }
 
+    private JCTree.JCIdent identity(Symbol symbol){
+        return treeMaker.Ident(symbol);
+    }
+
     public void processMembers(ReifiedDeclaration declaration) {
         if(declaration.isClass()){
-            processClassMembers(declaration.typeParameter(), declaration.methods(), declaration.enclosingClass());
+            processClassMembers(declaration);
             return;
         }
 
@@ -37,36 +38,57 @@ public class SimpleMaker {
         addParameter(declaration.typeParameter(), parameter);
     }
 
-    public void processClassMembers(Symbol.TypeVariableSymbol typeVariableSymbol, List<JCTree.JCMethodDecl> constructors, JCTree.JCClassDecl enclosingClass) {
-        var localVariable = createLocalVariable(typeVariableSymbol, enclosingClass);
-        constructors.forEach(constructor -> addParameterAndAssign(typeVariableSymbol, enclosingClass, localVariable, constructor));
+    public void processClassMembers(ReifiedDeclaration declaration) {
+        var localVariable = createLocalVariable(declaration.typeParameter(), declaration.enclosingClass());
+        declaration.methods().forEach(constructor ->
+                addParameterAndAssign(declaration, constructor, localVariable));
     }
 
-    private void addParameterAndAssign(Element typeParameter, JCTree.JCClassDecl typeParentTree, JCTree.JCVariableDecl localVariable, JCTree.JCMethodDecl constructor) {
+    private void addParameterAndAssign(ReifiedDeclaration declaration, JCTree.JCMethodDecl constructor, JCTree.JCVariableDecl localVariable) {
+        var typeParameter = declaration.typeParameter();
         var parameter = addParameter(typeParameter, constructor);
-        var thisCall = treeMaker.This(typeParentTree.sym.asType());
+        var thisCall = treeMaker.This(declaration.enclosingClass().sym.asType());
         var localVariableSelection = treeMaker.Select(thisCall, localVariable.getName());
         var localVariableAssignment = treeMaker.Assign(localVariableSelection, treeMaker.Ident(parameter));
 
         var localVariableStatement = treeMaker.at(constructor.pos).Exec(localVariableAssignment);
-        var newStats = new LinkedList<>(constructor.body.stats);
-        addStatement(localVariableStatement, newStats);
+        var newStats = addStatement(typeParameter, constructor, localVariableStatement);
         constructor.body.stats = List.from(newStats);
     }
 
-    private void addStatement(JCTree.JCExpressionStatement localVariableStatement, LinkedList<JCTree.JCStatement> newStats) {
+    private LinkedList<JCTree.JCStatement> addStatement(Symbol.TypeVariableSymbol typeParameter, JCTree.JCMethodDecl constructor, JCTree.JCExpressionStatement localVariableStatement) {
+        var newStats = new LinkedList<>(constructor.body.stats);
         if(newStats.isEmpty()){
             newStats.add(localVariableStatement);
-            return;
+            return newStats;
         }
 
         var firstStatement = newStats.getFirst();
         if(TreeInfo.isSuperCall(firstStatement)){
             newStats.add(1, localVariableStatement);
-            return;
+            return newStats;
         }
 
-        newStats.addFirst(localVariableStatement);
+        if(firstStatement.getKind() != Tree.Kind.EXPRESSION_STATEMENT){
+            newStats.addFirst(localVariableStatement);
+            return newStats;
+        }
+
+        var expressionStatement = (JCTree.JCExpressionStatement) firstStatement;
+        if(expressionStatement.getExpression().getKind() != Tree.Kind.METHOD_INVOCATION){
+            newStats.addFirst(localVariableStatement);
+            return newStats;
+        }
+
+        var thisCall = (JCTree.JCMethodInvocation) expressionStatement.getExpression();
+        if(!TreeInfo.isThisQualifier(thisCall.getMethodSelect())){
+            newStats.addFirst(localVariableStatement);
+            return newStats;
+        }
+
+        var typeLiteral = createGenericMethodLiteral(constructor, typeParameter.getSimpleName());
+        thisCall.args = thisCall.args.prepend(typeLiteral);
+        return newStats;
     }
 
     private JCTree.JCVariableDecl createLocalVariable(Element typeParameter, JCTree.JCClassDecl enclosingClass) {
@@ -104,5 +126,26 @@ public class SimpleMaker {
     public void addSuperParam(JCTree.JCExpression superType, JCTree.JCExpressionStatement firstStatement) {
         var superCall = (JCTree.JCMethodInvocation) firstStatement.getExpression();
         superCall.args = superCall.args.prepend(superType);
+    }
+
+    public JCTree.JCIdent createGenericMethodLiteral(JCTree.JCMethodDecl method, Name name) {
+        return method.sym.getParameters()
+                .stream()
+                .filter(param -> param.getSimpleName().contentEquals(name))
+                .findFirst()
+                .map(this::identity)
+                .orElseThrow(() -> new AssertionError("Nested reified parameter cannot be processed if enclosing parameters have not been processed yet"));
+    }
+
+    public JCTree.JCIdent createGenericClassLiteral(JCTree.JCClassDecl clazz, Name name) {
+        return clazz.getMembers()
+                .stream()
+                .filter(tree -> tree.getTag() == JCTree.Tag.VARDEF)
+                .map(tree -> (JCTree.JCVariableDecl) tree)
+                .filter(variable -> variable.getName().contentEquals(name))
+                .findFirst()
+                .map(variable -> variable.sym)
+                .map(this::identity)
+                .orElseThrow(() -> new AssertionError("Nested reified parameter cannot be processed if enclosing parameters have not been processed yet"));
     }
 }
