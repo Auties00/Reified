@@ -1,7 +1,7 @@
 # Reified
 Reified in Java 11 and upwards
 
-### What is ModernProtoc
+### What is Reified
 
 Reified is an Annotation for Java 11 and upwards inspired by the reified keyword in Kotlin.
 Kotlin's approach requires the instruction to also be inlined, excluding as a result classes by design.
