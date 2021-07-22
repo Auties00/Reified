@@ -18,7 +18,6 @@ import java.util.LinkedList;
 @AllArgsConstructor
 public class SimpleMaker {
     private final TreeMaker treeMaker;
-    private final SimpleClasses simpleClasses;
     private final SimpleTypes simpleTypes;
 
     public JCTree.JCExpression classLiteral(Type type){
@@ -36,7 +35,7 @@ public class SimpleMaker {
         }
 
         var parameter = declaration.methods().head;
-        addParameter(declaration.typeParameter(), parameter, false);
+        addParameter(declaration.typeParameter(), parameter);
     }
 
     public void processClassMembers(ReifiedDeclaration declaration) {
@@ -47,9 +46,12 @@ public class SimpleMaker {
 
     private void addParameterAndAssign(ReifiedDeclaration declaration, JCTree.JCMethodDecl constructor, JCTree.JCVariableDecl localVariable) {
         var typeParameter = declaration.typeParameter();
-        var isRecord = simpleClasses.isRecord(declaration.enclosingClass());
-        var parameter = addParameter(typeParameter, constructor, isRecord);
-        if(isRecord){
+        var parameter = addParameter(typeParameter, constructor);
+        if(simpleTypes.isRecord(declaration.enclosingClass().getModifiers())){
+            removeRecordSuperCall(constructor);
+        }
+
+        if(simpleTypes.isCompactConstructor(constructor)){
             return;
         }
 
@@ -59,6 +61,19 @@ public class SimpleMaker {
         var localVariableStatement = treeMaker.at(constructor.pos).Exec(localVariableAssignment);
         var newStats = addStatement(typeParameter, constructor, localVariableStatement);
         constructor.body.stats = List.from(newStats);
+    }
+
+    // The canonical constructor of a record cannot call another constructor(super() or this()).
+    // For some reason though, the generated super() method is still present which makes the compilation process fail.
+    // I have no idea why this happens, maybe the compiler also removes said method call but I couldn't find any evidence of this.
+    // For now this is a work around.
+    private void removeRecordSuperCall(JCTree.JCMethodDecl constructor) {
+        var statements = constructor.body.stats;
+        if (!TreeInfo.isSuperCall(statements.head)) {
+            return;
+        }
+
+        constructor.body.stats = List.filter(statements, statements.head);
     }
 
     private LinkedList<JCTree.JCStatement> addStatement(Symbol.TypeVariableSymbol typeParameter, JCTree.JCMethodDecl constructor, JCTree.JCExpressionStatement localVariableStatement) {
@@ -114,22 +129,17 @@ public class SimpleMaker {
     }
 
     private long createVariableModifiers(JCTree.JCClassDecl enclosingClass) {
-        if(simpleClasses.isRecord(enclosingClass)){
-            return Flags.PRIVATE | Flags.FINAL | Flags.RECORD;
+        if(simpleTypes.isRecord(enclosingClass.getModifiers())){
+            return Flags.PRIVATE | Flags.FINAL | Flags.COMPOUND | Flags.RECORD;
         }
 
         return Flags.PRIVATE | Flags.FINAL;
     }
 
-    private JCTree.JCVariableDecl addParameter(Element typeParameter, JCTree.JCMethodDecl method, boolean isRecord) {
+    private JCTree.JCVariableDecl addParameter(Element typeParameter, JCTree.JCMethodDecl method) {
         var paramType = simpleTypes.createTypeWithParameter(Class.class, typeParameter);
-        var param = treeMaker.at(method.pos)
-                .Param((Name) typeParameter.getSimpleName(), paramType, method.sym);
+        var param = treeMaker.at(method.pos).Param((Name) typeParameter.getSimpleName(), paramType, method.sym);
         param.sym.adr = 0;
-        if(isRecord){
-            param.mods.flags |= Flags.RECORD;
-        }
-
         method.params = method.params.prepend(param);
 
         var methodSymbol = (Symbol.MethodSymbol) method.sym;

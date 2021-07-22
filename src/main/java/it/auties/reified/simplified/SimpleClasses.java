@@ -1,5 +1,6 @@
 package it.auties.reified.simplified;
 
+import com.sun.tools.javac.code.Flags;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.tree.JCTree;
@@ -68,25 +69,18 @@ public class SimpleClasses {
                 .stream()
                 .filter(TreeInfo::isConstructor)
                 .map(constructor -> (JCTree.JCMethodDecl) constructor)
-                .map(this::removeDefaultConstructorFlag)
+                .map(constructor -> removeDefaultConstructorFlag(tree, constructor))
                 .collect(List.collector());
     }
 
-    public boolean isRecord(JCTree.JCClassDecl enclosingClass) {
-        return simpleTypes.isRecord(enclosingClass.mods);
-    }
-
-    private JCTree.JCMethodDecl removeDefaultConstructorFlag(JCTree.JCMethodDecl constructor) {
-        if(simpleTypes.isRecord(constructor.mods)){
+    private JCTree.JCMethodDecl removeDefaultConstructorFlag(JCTree.JCClassDecl owner, JCTree.JCMethodDecl constructor) {
+        if(simpleTypes.isRecord(owner.getModifiers())){
             return constructor;
         }
 
+        System.err.println("Removing from " + constructor);
         constructor.mods.flags &= ~GENERATEDCONSTR;
         return constructor;
-    }
-
-    public boolean isRecord(JCTree.JCMethodDecl enclosingClass) {
-        return (enclosingClass.mods.flags & RECORD) == RECORD;
     }
 
     public Optional<Symbol.MethodSymbol> resolveClass(@NonNull JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, @NonNull JCTree.JCNewClass invocation) {

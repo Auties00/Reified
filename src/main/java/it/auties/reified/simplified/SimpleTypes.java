@@ -221,8 +221,15 @@ public class SimpleTypes {
        return typeSymbol.getAnnotation(Reified.class) != null;
     }
 
-
     public boolean isRecord(JCTree.JCModifiers mods) {
-        return (mods.flags & Flags.RECORD) == Flags.RECORD;
+        return isRecord(mods.flags);
+    }
+
+    public boolean isRecord(long flags) {
+        return (flags & Flags.RECORD) != 0;
+    }
+
+    public boolean isCompactConstructor(JCTree.JCMethodDecl constructor) {
+        return (constructor.mods.flags & Flags.COMPACT_RECORD_CONSTRUCTOR) != 0;
     }
 }
