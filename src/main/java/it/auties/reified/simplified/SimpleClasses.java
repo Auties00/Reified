@@ -78,7 +78,6 @@ public class SimpleClasses {
             return constructor;
         }
 
-        System.err.println("Removing from " + constructor);
         constructor.mods.flags &= ~GENERATEDCONSTR;
         return constructor;
     }
