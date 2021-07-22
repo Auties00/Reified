@@ -1,6 +1,5 @@
 package it.auties.reified.simplified;
 
-import com.sun.tools.javac.code.Flags;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.tree.JCTree;
@@ -18,7 +17,6 @@ import java.util.Objects;
 import java.util.Optional;
 
 import static com.sun.tools.javac.code.Flags.GENERATEDCONSTR;
-import static com.sun.tools.javac.code.Flags.RECORD;
 
 @AllArgsConstructor
 @ExtensionMethod(StreamUtils.class)
