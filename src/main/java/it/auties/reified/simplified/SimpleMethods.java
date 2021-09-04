@@ -4,6 +4,7 @@ import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
+import com.sun.tools.javac.util.Assert;
 import lombok.AllArgsConstructor;
 import lombok.NonNull;
 
@@ -31,16 +32,12 @@ public class SimpleMethods {
         var args = invocation.getTypeArguments();
         if (args != null && !args.isEmpty()) {
             var deduced = simpleTypes.eraseTypeVariableFromTypeParameters(typeVariable, invoked.getTypeParameters(), args, enclosingClass);
-            if(deduced.isEmpty()){
-                throw new IllegalArgumentException("Cannot resolve method type for explicit type variable");
-            }
-
+            Assert.check(!deduced.isEmpty(), "Cannot resolve method type for explicit type variable");
             return simpleTypes.resolveWildCard(deduced.head);
         }
 
-        var returnType = invoked.getReturnType();
         var parameterType = resolveMethodType(typeVariable, invocation, invoked, enclosingClass);
-        var flatReturnType = simpleTypes.flattenGenericType(returnType).iterator();
+        var flatReturnType = simpleTypes.flattenGenericType(invoked.getReturnType()).iterator();
         var statementType = resolveMethodType(typeVariable, flatReturnType, enclosingClass, enclosingMethod, enclosingStatement);
         return statementType.map(type -> resolveMethodType(typeVariable, parameterType, type))
                 .orElse(resolveMethodType(typeVariable, parameterType));
@@ -59,9 +56,8 @@ public class SimpleMethods {
     }
 
     private Type resolveMethodType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCMethodInvocation invocation, Symbol.MethodSymbol invoked, JCTree.JCClassDecl enclosingClass) {
-        var constructorParams = invoked.getParameters();
         var invocationArgs = simpleTypes.resolveTypes(invocation.getArguments(), enclosingClass);
-        var commonTypes = simpleTypes.eraseTypeVariableFromArguments(typeVariable, constructorParams, invocationArgs, invoked.isVarArgs());
+        var commonTypes = simpleTypes.eraseTypeVariableFromArguments(typeVariable, invoked.getParameters(), invocationArgs, invoked.isVarArgs());
         return simpleTypes.commonType(commonTypes);
     }
 
@@ -95,4 +91,5 @@ public class SimpleMethods {
 
         return Optional.empty();
     }
+
 }

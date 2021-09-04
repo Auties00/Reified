@@ -14,7 +14,7 @@ public class ExtendedClassesScanner extends TreeScanner<Void, Void> {
     private final SimpleTypes simpleTypes;
     private List<JCTree.JCClassDecl> results;
 
-    public ExtendedClassesScanner(JCTree.JCClassDecl superClass, SimpleTypes simpleTypes){
+    public ExtendedClassesScanner(JCTree.JCClassDecl superClass, SimpleTypes simpleTypes) {
         simpleTypes.resolveClass(superClass);
         this.superClass = superClass;
         this.simpleTypes = simpleTypes;
@@ -23,13 +23,13 @@ public class ExtendedClassesScanner extends TreeScanner<Void, Void> {
     @Override
     public Void visitClass(ClassTree node, Void unused) {
         var rawNode = (JCTree.JCClassDecl) node;
-        if(rawNode.equals(superClass)){
+        if (rawNode.equals(superClass)) {
             return super.visitClass(node, unused);
         }
 
         simpleTypes.resolveClass(rawNode);
         var clause = rawNode.getExtendsClause();
-        if(clause == null || !TreeInfo.symbol(clause).equals(superClass.sym)){
+        if (clause == null || !TreeInfo.symbol(clause).equals(superClass.sym)) {
             return super.visitClass(node, unused);
         }
 

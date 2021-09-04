@@ -4,6 +4,7 @@ import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
+import com.sun.tools.javac.util.Assert;
 import com.sun.tools.javac.util.List;
 import it.auties.reified.model.ReifiedDeclaration;
 import it.auties.reified.util.StreamUtils;
@@ -72,7 +73,7 @@ public class SimpleClasses {
     }
 
     private JCTree.JCMethodDecl removeDefaultConstructorFlag(JCTree.JCClassDecl owner, JCTree.JCMethodDecl constructor) {
-        if(simpleTypes.isRecord(owner.getModifiers())){
+        if (simpleTypes.isRecord(owner.getModifiers())) {
             return constructor;
         }
 
@@ -92,20 +93,16 @@ public class SimpleClasses {
     }
 
     public Type resolveClassType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCNewClass invocation, Symbol.MethodSymbol invoked, JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCStatement enclosingStatement) {
-        var classType = invoked.enclClass();
-        var invokedTypeArgs = classType.getTypeParameters();
+        var invokedTypeArgs = invoked.enclClass().getTypeParameters();
         var invocationTypeArgs = simpleTypes.flattenGenericType(invocation.getIdentifier());
-        if (invocationTypeArgs != null && !invocationTypeArgs.isEmpty()) {
+        if (!invocationTypeArgs.isEmpty()) {
             var deduced = simpleTypes.eraseTypeVariableFromTypeParameters(typeVariable, invokedTypeArgs, invocationTypeArgs, enclosingClass);
-            if(deduced.isEmpty()){
-                throw new IllegalArgumentException("Cannot resolve class type for explicit type variable");
-            }
-
+            Assert.check(!deduced.isEmpty(), "Cannot resolve class type for explicit type variable");
             return simpleTypes.resolveWildCard(deduced.head);
         }
 
         var parameterType = resolveClassType(typeVariable, invocation, invoked, enclosingClass);
-        var flatReturnType = simpleTypes.flattenGenericType(classType.asType().getTypeArguments()).iterator();
+        var flatReturnType = simpleTypes.flattenGenericType(invoked.enclClass().asType().getTypeArguments()).iterator();
         var statementType = resolveClassType(typeVariable, flatReturnType, enclosingClass, enclosingMethod, enclosingStatement);
         return statementType
                 .map(type -> resolveClassType(typeVariable, parameterType, type))
@@ -126,43 +123,40 @@ public class SimpleClasses {
 
     private Type resolveClassType(Symbol.TypeVariableSymbol typeVariable, JCTree.JCNewClass invocation, Symbol.MethodSymbol constructor, JCTree.JCClassDecl enclosingClass) {
         var invocationArgs = simpleTypes.resolveTypes(invocation.getArguments(), enclosingClass);
-        var constructorParams = constructor.getParameters();
-        var commonTypes = simpleTypes.eraseTypeVariableFromArguments(typeVariable, List.from(constructorParams), invocationArgs, constructor.isVarArgs());
+        var commonTypes = simpleTypes.eraseTypeVariableFromArguments(typeVariable, constructor.getParameters(), invocationArgs, constructor.isVarArgs());
         return simpleTypes.commonType(commonTypes);
     }
 
     public Optional<Type> resolveClassType(Symbol.TypeVariableSymbol typeVariable, Iterator<Type> flatReturnType, JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCStatement enclosingStatement) {
-        if (enclosingStatement instanceof JCTree.JCReturn) {
-            var env = simpleTypes.findClassEnv(enclosingClass);
-            var methodReturnType = simpleTypes.resolveClassType(enclosingMethod.getReturnType(), env);
-            if (methodReturnType.isEmpty()) {
-                return Optional.empty();
-            }
+        var env = simpleTypes.findClassEnv(enclosingClass);
+        switch (enclosingStatement.getTag()) {
+            case RETURN:
+                var methodReturnType = simpleTypes.resolveClassType(enclosingMethod.getReturnType(), env);
+                if (methodReturnType.isEmpty()) {
+                    return Optional.empty();
+                }
 
-            var flatMethodReturn = simpleTypes.flattenGenericType(methodReturnType.get()).iterator();
-            return simpleTypes.resolveImplicitType(flatMethodReturn, flatReturnType, typeVariable);
+                var flatMethodReturn = simpleTypes.flattenGenericType(methodReturnType.get()).iterator();
+                return simpleTypes.resolveImplicitType(flatMethodReturn, flatReturnType, typeVariable);
+            case VARDEF:
+                var variable = (JCTree.JCVariableDecl) enclosingStatement;
+                if (variable.isImplicitlyTyped()) {
+                    return Optional.empty();
+                }
+
+                var variableType = simpleTypes.resolveClassType(variable.vartype, env);
+                if (variableType.isEmpty()) {
+                    return Optional.empty();
+                }
+
+                var flatVariableType = simpleTypes.flattenGenericType(variableType.get()).iterator();
+                return simpleTypes.resolveImplicitType(flatVariableType, flatReturnType, typeVariable);
+            default:
+                return Optional.empty();
         }
-
-        if (enclosingStatement instanceof JCTree.JCVariableDecl) {
-            var variable = (JCTree.JCVariableDecl) enclosingStatement;
-            if(variable.isImplicitlyTyped()){
-                return Optional.empty();
-            }
-
-            var env = simpleTypes.findClassEnv(enclosingClass);
-            var variableType = simpleTypes.resolveClassType(variable.vartype, env);
-            if (variableType.isEmpty()) {
-                return Optional.empty();
-            }
-
-            var flatVariableType = simpleTypes.flattenGenericType(variableType.get()).iterator();
-            return simpleTypes.resolveImplicitType(flatVariableType, flatReturnType, typeVariable);
-        }
-
-        return Optional.empty();
     }
 
-    public boolean isAssignable(Type classType, Type assign){
+    public boolean isAssignable(Type classType, Type assign) {
         return simpleTypes.isAssignable(classType, assign);
     }
 }

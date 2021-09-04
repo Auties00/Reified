@@ -4,5 +4,4 @@ open module it.auties.reified {
     requires jdk.compiler;
 
     exports it.auties.reified.annotation;
-    exports it.auties.reified.processor;
 }

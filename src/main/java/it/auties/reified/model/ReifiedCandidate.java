@@ -7,6 +7,8 @@ import lombok.ToString;
 import lombok.Value;
 import lombok.experimental.Accessors;
 
+import java.util.Objects;
+
 @Value
 @Accessors(fluent = true)
 @ToString
@@ -15,13 +17,17 @@ public class ReifiedCandidate {
     @NonNull JCTree.JCClassDecl enclosingClass;
     JCTree.JCMethodDecl enclosingMethod;
 
+    public boolean isClass() {
+        return Objects.isNull(enclosingMethod());
+    }
+
     @Override
     public boolean equals(Object other) {
-        if(this == other){
+        if (this == other) {
             return true;
         }
 
-        if(!(other instanceof ReifiedCandidate)){
+        if (!(other instanceof ReifiedCandidate)) {
             return false;
         }
 

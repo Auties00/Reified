@@ -13,27 +13,27 @@ import java.util.Optional;
 public class SimpleContext {
     private final String JAVAC_ENV = "com.sun.tools.javac.processing.JavacProcessingEnvironment";
 
-    public Context resolveContext(ProcessingEnvironment environment){
+    public Context resolveContext(ProcessingEnvironment environment) {
         var envClass = environment.getClass();
-        if(envClass.getName().equals(JAVAC_ENV)){
+        if (envClass.getName().equals(JAVAC_ENV)) {
             return ((JavacProcessingEnvironment) environment).getContext();
         }
 
-        if(Proxy.isProxyClass(envClass)){
+        if (Proxy.isProxyClass(envClass)) {
             return resolveIntelliJContext(environment);
         }
 
         return resolveGradleContext(environment);
     }
 
-    private Context resolveIntelliJContext(ProcessingEnvironment environment){
+    private Context resolveIntelliJContext(ProcessingEnvironment environment) {
         var handler = Proxy.getInvocationHandler(environment);
         return resolveIntelliJEnvironment(handler.getClass(), handler)
                 .orElseThrow(() -> new UnsupportedOperationException("Cannot find environment in intellij: missing field"))
                 .getContext();
     }
 
-    private Optional<JavacProcessingEnvironment> resolveIntelliJEnvironment(Class<?> clazz, InvocationHandler handler){
+    private Optional<JavacProcessingEnvironment> resolveIntelliJEnvironment(Class<?> clazz, InvocationHandler handler) {
         return resolveFieldRecursively(clazz, "val$delegateTo", handler);
     }
 
@@ -43,12 +43,12 @@ public class SimpleContext {
                 .getContext();
     }
 
-    private Optional<JavacProcessingEnvironment> resolveGradleEnvironment(ProcessingEnvironment environment){
+    private Optional<JavacProcessingEnvironment> resolveGradleEnvironment(ProcessingEnvironment environment) {
         return resolveFieldRecursively(environment.getClass(), "delegate", environment);
     }
 
-    private Optional<JavacProcessingEnvironment> resolveFieldRecursively(Class<?> clazz, String fieldName, Object handler){
-        if(clazz == null){
+    private Optional<JavacProcessingEnvironment> resolveFieldRecursively(Class<?> clazz, String fieldName, Object handler) {
+        if (clazz == null) {
             return Optional.empty();
         }
 
@@ -56,9 +56,9 @@ public class SimpleContext {
             var field = clazz.getDeclaredField(fieldName);
             field.setAccessible(true);
             return Optional.of((JavacProcessingEnvironment) field.get(handler));
-        }catch (NoSuchFieldException ignored){
+        } catch (NoSuchFieldException ignored) {
             return resolveFieldRecursively(clazz.getSuperclass(), fieldName, handler);
-        }catch (IllegalAccessException exception){
+        } catch (IllegalAccessException exception) {
             throw new UnsupportedOperationException("Cannot find environment: access exception", exception);
         }
     }

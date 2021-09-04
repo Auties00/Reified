@@ -44,15 +44,15 @@ public class SimpleTypes {
         return Assert.checkNonNull(type, "Reified Methods: Cannot compile as the type element associated with the class " + clazz.getName() + " doesn't exist!");
     }
 
-    public void resolveEnv(Env<AttrContext> attrContextEnv){
+    public void resolveEnv(Env<AttrContext> attrContextEnv) {
         attr.attrib(attrContextEnv);
     }
 
-    public void resolveClass(JCTree.JCClassDecl clazz){
+    public void resolveClass(JCTree.JCClassDecl clazz) {
         attr.attribClass(clazz.pos(), clazz.sym);
     }
 
-    public List<Type> resolveTypes(List<? extends JCTree> expressions, JCTree.JCClassDecl clazz){
+    public List<Type> resolveTypes(List<? extends JCTree> expressions, JCTree.JCClassDecl clazz) {
         var env = findClassEnv(clazz);
         return expressions.stream()
                 .map(type -> attr.attribExpr(type, env))
@@ -63,8 +63,8 @@ public class SimpleTypes {
         return !type.isErroneous();
     }
 
-    public Optional<Env<AttrContext>> findClassEnv(Tree tree){
-        if(!(tree instanceof JCTree.JCClassDecl)){
+    public Optional<Env<AttrContext>> findClassEnv(Tree tree) {
+        if (!(tree instanceof JCTree.JCClassDecl)) {
             return Optional.empty();
         }
 
@@ -75,12 +75,8 @@ public class SimpleTypes {
         return enter.getClassEnv(enclosingClass.sym.asType().asElement());
     }
 
-    public Env<AttrContext> findClassEnv(Type.ClassType type) {
-        return enter.getClassEnv(type.asElement());
-    }
-
-    public Env<AttrContext> findMethodEnv(JCTree.JCMethodDecl method, Env<AttrContext> env){
-        if(method == null) {
+    public Env<AttrContext> findMethodEnv(JCTree.JCMethodDecl method, Env<AttrContext> env) {
+        if (method == null) {
             return env;
         }
 
@@ -100,19 +96,19 @@ public class SimpleTypes {
         return typeVariableSymbol.erasure(types);
     }
 
-    public Type boxed(Type type){
+    public Type boxed(Type type) {
         return types.boxedTypeOrType(type);
     }
 
-    public boolean isGeneric(Type type){
+    public boolean isGeneric(Type type) {
         return type instanceof Type.TypeVar;
     }
 
-    public boolean isNotWildCard(Type type){
+    public boolean isNotWildCard(Type type) {
         return !(type instanceof Type.WildcardType);
     }
 
-    public Type resolveWildCard(Type type){
+    public Type resolveWildCard(Type type) {
         if (isNotWildCard(type)) {
             return type;
         }
@@ -133,7 +129,7 @@ public class SimpleTypes {
                 .collect(List.collector());
     }
 
-    public List<Type> eraseTypeVariableFromArguments(Symbol.TypeVariableSymbol typeParameter, List<Symbol.VarSymbol> parameters, List<Type> arguments, boolean varArgs){
+    public List<Type> eraseTypeVariableFromArguments(Symbol.TypeVariableSymbol typeParameter, List<Symbol.VarSymbol> parameters, List<Type> arguments, boolean varArgs) {
         return IntStream.range(0, arguments.size())
                 .filter(index -> matchTypeVariableToParameter(typeParameter, parameters, index, varArgs))
                 .mapToObj(arguments::get)
@@ -143,7 +139,7 @@ public class SimpleTypes {
 
     private boolean matchTypeVariableToParameter(Symbol.TypeVariableSymbol typeParameter, List<Symbol.VarSymbol> parameters, int index, boolean varArgs) {
         var param = getVarArgsParam(parameters, index, varArgs);
-        if(types.isArray(param)){
+        if (types.isArray(param)) {
             var arrayType = (Type.ArrayType) param;
             return typeParameter.equals(arrayType.getComponentType().asElement());
         }
@@ -152,15 +148,15 @@ public class SimpleTypes {
     }
 
     private Type getVarArgsParam(List<Symbol.VarSymbol> parameters, int index, boolean varArgs) {
-        if(!varArgs || index < parameters.size() - 1){
+        if (!varArgs || index < parameters.size() - 1) {
             return parameters.get(index).asType();
         }
 
         return parameters.last().asType();
     }
 
-    private Type parseArgument(Type type){
-        if(types.isArray(type)){
+    private Type parseArgument(Type type) {
+        if (types.isArray(type)) {
             var arrayType = (Type.ArrayType) type;
             return boxed(arrayType.getComponentType());
         }
@@ -172,8 +168,8 @@ public class SimpleTypes {
         return Optional.ofNullable(attr.attribType(argument, env)).filter(this::isValid);
     }
 
-    public List<JCTree.JCExpression> flattenGenericType(JCTree.JCExpression type){
-        if(!(type instanceof JCTree.JCTypeApply)){
+    public List<JCTree.JCExpression> flattenGenericType(JCTree.JCExpression type) {
+        if (!(type instanceof JCTree.JCTypeApply)) {
             return List.of(type);
         }
 
@@ -184,23 +180,23 @@ public class SimpleTypes {
                 .collect(List.collector());
     }
 
-    public List<Type> flattenGenericType(Type type){
-        if(!type.isParameterized()){
+    public List<Type> flattenGenericType(Type type) {
+        if (!type.isParameterized()) {
             return List.of(type);
         }
 
         return flattenGenericType(type.getTypeArguments());
     }
 
-    public List<Type> flattenGenericType(List<? extends Type> types){
+    public List<Type> flattenGenericType(List<? extends Type> types) {
         return types.stream()
                 .map(this::flattenGenericType)
                 .flatMap(Collection::stream)
                 .collect(List.collector());
     }
 
-    public Optional<Type> resolveImplicitType(Iterator<Type> invocationIterator, Iterator<Type> genericIterator, Symbol.TypeVariableSymbol typeVariable){
-        while (invocationIterator.hasNext() && genericIterator.hasNext()){
+    public Optional<Type> resolveImplicitType(Iterator<Type> invocationIterator, Iterator<Type> genericIterator, Symbol.TypeVariableSymbol typeVariable) {
+        while (invocationIterator.hasNext() && genericIterator.hasNext()) {
             var invocation = invocationIterator.next();
             var generic = genericIterator.next();
             if (!generic.tsym.equals(typeVariable)) {
@@ -213,12 +209,12 @@ public class SimpleTypes {
         return Optional.empty();
     }
 
-    public boolean isAssignable(Type assignable, Type assigned){
+    public boolean isAssignable(Type assignable, Type assigned) {
         return types.isSubtype(assignable, assigned);
     }
 
     public boolean isReified(Symbol typeSymbol) {
-       return typeSymbol.getAnnotation(Reified.class) != null;
+        return typeSymbol.getAnnotation(Reified.class) != null;
     }
 
     public boolean isRecord(JCTree.JCModifiers mods) {

@@ -68,15 +68,27 @@
     <packaging>jar</packaging>
 
     <properties>
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
+        <java.version>11</java.version>
+        <lombok.version>1.18.20</lombok.version>
+        <compiler.plugin.version>3.8.1</compiler.plugin.version>
+        <javadoc.plugin.version>3.2.0</javadoc.plugin.version>
+        <deploy.plugin.version>2.8.2</deploy.plugin.version>
+        <staging.plugin.version>1.6.7</staging.plugin.version>
+        <reified.module>it.auties.reified</reified.module>
+        <open.tree.module>jdk.compiler/com.sun.tools.javac.tree=${reified.module}</open.tree.module>
+        <open.util.module>jdk.compiler/com.sun.tools.javac.util=${reified.module}</open.util.module>
+        <open.code.module>jdk.compiler/com.sun.tools.javac.code=${reified.module}</open.code.module>
+        <open.api.module>jdk.compiler/com.sun.tools.javac.api=${reified.module}</open.api.module>
+        <open.comp.module>jdk.compiler/com.sun.tools.javac.comp=${reified.module}</open.comp.module>
+        <open.jvm.module>jdk.compiler/com.sun.tools.javac.jvm=${reified.module}</open.jvm.module>
+        <open.processing.module>jdk.compiler/com.sun.tools.javac.processing=${reified.module}</open.processing.module>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <version>1.18.20</version>
+            <version>${lombok.version}</version>
             <scope>compile</scope>
         </dependency>
     </dependencies>
@@ -86,40 +98,40 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.8.1</version>
+                <version>${compiler.plugin.version}</version>
                 <configuration>
-                    <source>11</source>
-                    <target>11</target>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
                     <encoding>UTF-8</encoding>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
-                            <version>1.18.20</version>
+                            <version>${lombok.version}</version>
                         </path>
                     </annotationProcessorPaths>
                     <compilerArgs>
                         <arg>--add-exports</arg>
-                        <arg>jdk.compiler/com.sun.tools.javac.tree=it.auties.reified</arg>
+                        <arg>${open.tree.module}</arg>
                         <arg>--add-exports</arg>
-                        <arg>jdk.compiler/com.sun.tools.javac.util=it.auties.reified</arg>
+                        <arg>${open.util.module}</arg>
                         <arg>--add-exports</arg>
-                        <arg>jdk.compiler/com.sun.tools.javac.code=it.auties.reified</arg>
+                        <arg>${open.code.module}</arg>
                         <arg>--add-exports</arg>
-                        <arg>jdk.compiler/com.sun.tools.javac.api=it.auties.reified</arg>
+                        <arg>${open.api.module}</arg>
                         <arg>--add-exports</arg>
-                        <arg>jdk.compiler/com.sun.tools.javac.comp=it.auties.reified</arg>
+                        <arg>${open.comp.module}</arg>
                         <arg>--add-exports</arg>
-                        <arg>jdk.compiler/com.sun.tools.javac.jvm=it.auties.reified</arg>
+                        <arg>${open.jvm.module}</arg>
                         <arg>--add-exports</arg>
-                        <arg>jdk.compiler/com.sun.tools.javac.processing=it.auties.reified</arg>
+                        <arg>${open.processing.module}</arg>
                     </compilerArgs>
                 </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
-                <version>3.2.0</version>
+                <version>${javadoc.plugin.version}</version>
                 <executions>
                     <execution>
                         <phase>prepare-package</phase>
@@ -130,13 +142,13 @@
                 </executions>
                 <configuration>
                     <additionalOptions>
-                        <additionalOption>--add-exports jdk.compiler/com.sun.tools.javac.tree=it.auties.reified</additionalOption>
-                        <additionalOption>--add-exports jdk.compiler/com.sun.tools.javac.util=it.auties.reified</additionalOption>
-                        <additionalOption>--add-exports jdk.compiler/com.sun.tools.javac.code=it.auties.reified</additionalOption>
-                        <additionalOption>--add-exports jdk.compiler/com.sun.tools.javac.api=it.auties.reified</additionalOption>
-                        <additionalOption>--add-exports jdk.compiler/com.sun.tools.javac.comp=it.auties.reified</additionalOption>
-                        <additionalOption>--add-exports jdk.compiler/com.sun.tools.javac.jvm=it.auties.reified</additionalOption>
-                        <additionalOption>--add-exports jdk.compiler/com.sun.tools.javac.processing=it.auties.reified</additionalOption>
+                        <additionalOption>--add-exports ${open.tree.module}</additionalOption>
+                        <additionalOption>--add-exports ${open.util.module}</additionalOption>
+                        <additionalOption>--add-exports ${open.code.module}</additionalOption>
+                        <additionalOption>--add-exports ${open.api.module}</additionalOption>
+                        <additionalOption>--add-exports ${open.comp.module}</additionalOption>
+                        <additionalOption>--add-exports ${open.jvm.module}</additionalOption>
+                        <additionalOption>--add-exports ${open.processing.module}</additionalOption>
                     </additionalOptions>
                     <failOnError>true</failOnError>
                     <debug>true</debug>
@@ -146,7 +158,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-deploy-plugin</artifactId>
-                <version>2.8.2</version>
+                <version>${deploy.plugin.version}</version>
                 <executions>
                     <execution>
                         <id>default-deploy</id>
@@ -160,7 +172,7 @@
             <plugin>
                 <groupId>org.sonatype.plugins</groupId>
                 <artifactId>nexus-staging-maven-plugin</artifactId>
-                <version>1.6.7</version>
+                <version>${staging.plugin.version}</version>
                 <extensions>true</extensions>
                 <configuration>
                     <serverId>ossrh</serverId>

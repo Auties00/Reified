@@ -25,8 +25,7 @@ public class MethodInvocationScanner extends ReifiedScanner {
     }
 
     private boolean isMatchingMethod(Symbol.MethodSymbol calling) {
-        return parameter()
-                .methods()
+        return parameter().methods()
                 .stream()
                 .anyMatch(method -> method.sym.equals(calling));
     }

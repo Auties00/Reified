@@ -20,16 +20,16 @@ public class SimpleMaker {
     private final TreeMaker treeMaker;
     private final SimpleTypes simpleTypes;
 
-    public JCTree.JCExpression classLiteral(Type type){
+    public JCTree.JCExpression classLiteral(Type type) {
         return treeMaker.ClassLiteral(type);
     }
 
-    private JCTree.JCIdent identity(Symbol symbol){
+    private JCTree.JCIdent identity(Symbol symbol) {
         return treeMaker.Ident(symbol);
     }
 
     public void processMembers(ReifiedDeclaration declaration) {
-        if(declaration.isClass()){
+        if (declaration.isClass()) {
             processClassMembers(declaration);
             return;
         }
@@ -47,11 +47,11 @@ public class SimpleMaker {
     private void addParameterAndAssign(ReifiedDeclaration declaration, JCTree.JCMethodDecl constructor, JCTree.JCVariableDecl localVariable) {
         var typeParameter = declaration.typeParameter();
         var parameter = addParameter(typeParameter, constructor);
-        if(simpleTypes.isRecord(declaration.enclosingClass().getModifiers())){
+        if (simpleTypes.isRecord(declaration.enclosingClass().getModifiers())) {
             removeRecordSuperCall(constructor);
         }
 
-        if(simpleTypes.isCompactConstructor(constructor)){
+        if (simpleTypes.isCompactConstructor(constructor)) {
             return;
         }
 
@@ -78,30 +78,30 @@ public class SimpleMaker {
 
     private LinkedList<JCTree.JCStatement> addStatement(Symbol.TypeVariableSymbol typeParameter, JCTree.JCMethodDecl constructor, JCTree.JCExpressionStatement localVariableStatement) {
         var newStats = new LinkedList<>(constructor.body.stats);
-        if(newStats.isEmpty()){
+        if (newStats.isEmpty()) {
             newStats.add(localVariableStatement);
             return newStats;
         }
 
         var firstStatement = newStats.getFirst();
-        if(TreeInfo.isSuperCall(firstStatement)){
+        if (TreeInfo.isSuperCall(firstStatement)) {
             newStats.add(1, localVariableStatement);
             return newStats;
         }
 
-        if(firstStatement.getKind() != Tree.Kind.EXPRESSION_STATEMENT){
+        if (firstStatement.getKind() != Tree.Kind.EXPRESSION_STATEMENT) {
             newStats.addFirst(localVariableStatement);
             return newStats;
         }
 
         var expressionStatement = (JCTree.JCExpressionStatement) firstStatement;
-        if(expressionStatement.getExpression().getKind() != Tree.Kind.METHOD_INVOCATION){
+        if (expressionStatement.getExpression().getKind() != Tree.Kind.METHOD_INVOCATION) {
             newStats.addFirst(localVariableStatement);
             return newStats;
         }
 
         var thisCall = (JCTree.JCMethodInvocation) expressionStatement.getExpression();
-        if(!TreeInfo.isThisQualifier(thisCall.getMethodSelect())){
+        if (!TreeInfo.isThisQualifier(thisCall.getMethodSelect())) {
             newStats.addFirst(localVariableStatement);
             return newStats;
         }
@@ -129,7 +129,7 @@ public class SimpleMaker {
     }
 
     private long createVariableModifiers(JCTree.JCClassDecl enclosingClass) {
-        if(simpleTypes.isRecord(enclosingClass.getModifiers())){
+        if (simpleTypes.isRecord(enclosingClass.getModifiers())) {
             return Flags.PRIVATE | Flags.FINAL | Flags.COMPOUND | Flags.RECORD;
         }
 

@@ -33,7 +33,7 @@ public abstract class ReifiedScanner extends TreeScanner<Void, Void> {
 
     @Override
     public Void scan(Tree tree, Void unused) {
-        if(tree instanceof JCTree.JCStatement){
+        if (tree instanceof JCTree.JCStatement) {
             enclosingStatement(null);
         }
 
