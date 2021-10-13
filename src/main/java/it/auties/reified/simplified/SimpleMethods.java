@@ -62,34 +62,31 @@ public class SimpleMethods {
     }
 
     private Optional<Type> resolveMethodType(Symbol.TypeVariableSymbol typeVariable, Iterator<Type> flatReturnType, JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCStatement enclosingStatement) {
-        if (enclosingStatement instanceof JCTree.JCReturn) {
-            var env = simpleTypes.findClassEnv(enclosingClass);
-            var methodReturnType = simpleTypes.resolveClassType(enclosingMethod.getReturnType(), env);
-            if (methodReturnType.isEmpty()) {
-                return Optional.empty();
-            }
+        var env = simpleTypes.findClassEnv(enclosingClass);
+        switch (enclosingStatement.getTag()) {
+            case RETURN:
+                var methodReturnType = simpleTypes.resolveClassType(enclosingMethod.getReturnType(), env);
+                if (methodReturnType.isEmpty()) {
+                    return Optional.empty();
+                }
 
-            var flatMethodReturn = simpleTypes.flattenGenericType(methodReturnType.get()).iterator();
-            return simpleTypes.resolveImplicitType(flatMethodReturn, flatReturnType, typeVariable);
+                var flatMethodReturn = simpleTypes.flattenGenericType(methodReturnType.get()).iterator();
+                return simpleTypes.resolveImplicitType(flatMethodReturn, flatReturnType, typeVariable);
+            case VARDEF:
+                var variable = (JCTree.JCVariableDecl) enclosingStatement;
+                if (variable.isImplicitlyTyped()) {
+                    return Optional.empty();
+                }
+
+                var variableType = simpleTypes.resolveClassType(variable.vartype, env);
+                if (variableType.isEmpty()) {
+                    return Optional.empty();
+                }
+
+                var flatVariableType = simpleTypes.flattenGenericType(variableType.get()).iterator();
+                return simpleTypes.resolveImplicitType(flatVariableType, flatReturnType, typeVariable);
+            default:
+                return Optional.empty();
         }
-
-        if (enclosingStatement instanceof JCTree.JCVariableDecl) {
-            var variable = (JCTree.JCVariableDecl) enclosingStatement;
-            if (variable.isImplicitlyTyped()) {
-                return Optional.empty();
-            }
-
-            var env = simpleTypes.findClassEnv(enclosingClass);
-            var variableType = simpleTypes.resolveClassType(variable.vartype, env);
-            if (variableType.isEmpty()) {
-                return Optional.empty();
-            }
-
-            var flatVariableType = simpleTypes.flattenGenericType(variableType.get()).iterator();
-            return simpleTypes.resolveImplicitType(flatVariableType, flatReturnType, typeVariable);
-        }
-
-        return Optional.empty();
     }
-
 }
