@@ -5,10 +5,11 @@ import com.sun.source.util.TreeScanner;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.util.Assert;
+import it.auties.reified.model.ReifiedArrayInitialization;
 import it.auties.reified.model.ReifiedCall;
 import it.auties.reified.model.ReifiedDeclaration;
 import it.auties.reified.simplified.SimpleClasses;
-import it.auties.reified.simplified.SimpleMethods;
+import it.auties.reified.simplified.SimpleTypes;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.RequiredArgsConstructor;
@@ -21,12 +22,12 @@ import java.util.Set;
 @RequiredArgsConstructor
 @Data
 @Accessors(fluent = true)
-public abstract class ReifiedScanner extends TreeScanner<Void, Void> {
+public abstract class ReifiedScanner<T> extends TreeScanner<Void, Void> {
     private final ReifiedDeclaration parameter;
     private final SimpleClasses simpleClasses;
-    private final SimpleMethods simpleMethods;
+    private final SimpleTypes simpleTypes;
 
-    private Set<ReifiedCall> results;
+    private Set<T> results;
     private JCTree.JCClassDecl enclosingClass;
     private JCTree.JCMethodDecl enclosingMethod;
     private JCTree.JCStatement enclosingStatement;
@@ -68,11 +69,15 @@ public abstract class ReifiedScanner extends TreeScanner<Void, Void> {
         return super.visitVariable(node, unused);
     }
 
-    protected ReifiedCall buildResultCall(JCTree.JCPolyExpression tree, Symbol.MethodSymbol invoked) {
-        return new ReifiedCall(tree, invoked, enclosingClass, enclosingMethod, enclosingStatement);
+    protected ReifiedCall buildCall(JCTree.JCPolyExpression tree, Symbol.MethodSymbol invoked) {
+        return new ReifiedCall(parameter().typeParameter(), tree, invoked, enclosingClass, enclosingMethod, enclosingStatement);
     }
 
-    public Set<ReifiedCall> scan(JCTree tree) {
+    protected ReifiedArrayInitialization buildArrayInit(JCTree.JCNewArray tree, Symbol.TypeVariableSymbol typeVariableSymbol) {
+        return new ReifiedArrayInitialization(tree, typeVariableSymbol, enclosingClass, enclosingMethod, enclosingStatement);
+    }
+
+    public Set<T> scan(JCTree tree) {
         this.results = new HashSet<>();
         scan(tree, null);
         return results;

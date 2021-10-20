@@ -13,7 +13,7 @@ import java.util.Objects;
 @Accessors(fluent = true)
 @ToString
 public class ReifiedCandidate {
-    @NonNull Symbol.TypeVariableSymbol typeVariableSymbol;
+    @NonNull Symbol.TypeVariableSymbol typeVariable;
     @NonNull JCTree.JCClassDecl enclosingClass;
     JCTree.JCMethodDecl enclosingMethod;
 
@@ -32,6 +32,6 @@ public class ReifiedCandidate {
         }
 
         var otherCandidate = (ReifiedCandidate) other;
-        return typeVariableSymbol.equals(otherCandidate.typeVariableSymbol);
+        return typeVariable.equals(otherCandidate.typeVariable);
     }
 }

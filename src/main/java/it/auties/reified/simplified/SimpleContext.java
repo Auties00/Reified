@@ -2,49 +2,54 @@ package it.auties.reified.simplified;
 
 import com.sun.tools.javac.processing.JavacProcessingEnvironment;
 import com.sun.tools.javac.util.Context;
+import it.auties.reified.util.IllegalReflection;
 import lombok.experimental.UtilityClass;
 
 import javax.annotation.processing.ProcessingEnvironment;
-import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.util.Optional;
 
 @UtilityClass
 public class SimpleContext {
+    private final IllegalReflection REFLECTION = new IllegalReflection();
     private final String JAVAC_ENV = "com.sun.tools.javac.processing.JavacProcessingEnvironment";
+    private final String GRADLE_WRAPPED_FIELD = "delegate";
 
     public Context resolveContext(ProcessingEnvironment environment) {
         var envClass = environment.getClass();
         if (envClass.getName().equals(JAVAC_ENV)) {
-            return ((JavacProcessingEnvironment) environment).getContext();
+            return resolveJavacContext(environment, envClass);
         }
 
         if (Proxy.isProxyClass(envClass)) {
             return resolveIntelliJContext(environment);
         }
 
-        return resolveGradleContext(environment);
+        return resolveGradleEnvironment(environment);
+    }
+
+    private Context resolveJavacContext(ProcessingEnvironment environment, Class<? extends ProcessingEnvironment> envClass) {
+        try {
+            return (Context) REFLECTION.open(envClass.getDeclaredMethod("getContext")).invoke(environment);
+        }catch (Throwable exception){
+            throw new UnsupportedOperationException("Cannot resolve javac context", exception);
+        }
     }
 
     private Context resolveIntelliJContext(ProcessingEnvironment environment) {
-        var handler = Proxy.getInvocationHandler(environment);
-        return resolveIntelliJEnvironment(handler.getClass(), handler)
-                .orElseThrow(() -> new UnsupportedOperationException("Cannot find environment in intellij: missing field"))
+        try {
+            var getContext = JavacProcessingEnvironment.class.getMethod("getContext");
+            return (Context) Proxy.getInvocationHandler(environment)
+                    .invoke(environment, getContext, new Object[0]);
+        }catch (Throwable exception){
+            throw new UnsupportedOperationException("Cannot resolve intellij context", exception);
+        }
+    }
+
+    private Context resolveGradleEnvironment(ProcessingEnvironment environment) {
+        return resolveFieldRecursively(environment.getClass(), GRADLE_WRAPPED_FIELD, environment)
+                .orElseThrow(() -> new UnsupportedOperationException("Unsupported environment!"))
                 .getContext();
-    }
-
-    private Optional<JavacProcessingEnvironment> resolveIntelliJEnvironment(Class<?> clazz, InvocationHandler handler) {
-        return resolveFieldRecursively(clazz, "val$delegateTo", handler);
-    }
-
-    private Context resolveGradleContext(ProcessingEnvironment environment) {
-        return resolveGradleEnvironment(environment)
-                .orElseThrow(() -> new UnsupportedOperationException("Reified annotation processing failed: unsupported environment!"))
-                .getContext();
-    }
-
-    private Optional<JavacProcessingEnvironment> resolveGradleEnvironment(ProcessingEnvironment environment) {
-        return resolveFieldRecursively(environment.getClass(), "delegate", environment);
     }
 
     private Optional<JavacProcessingEnvironment> resolveFieldRecursively(Class<?> clazz, String fieldName, Object handler) {

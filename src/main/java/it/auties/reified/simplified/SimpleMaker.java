@@ -9,23 +9,54 @@ import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.Name;
+import com.sun.tools.javac.util.Names;
+import it.auties.reified.model.ReifiedArrayInitialization;
 import it.auties.reified.model.ReifiedDeclaration;
 import lombok.AllArgsConstructor;
 
 import javax.lang.model.element.Element;
-import java.util.LinkedList;
+import java.util.*;
 
 @AllArgsConstructor
 public class SimpleMaker {
-    private final TreeMaker treeMaker;
+    private final TreeMaker maker;
     private final SimpleTypes simpleTypes;
+    private final Names names;
 
     public JCTree.JCExpression classLiteral(Type type) {
-        return treeMaker.ClassLiteral(type);
+        return maker.ClassLiteral(type);
+    }
+
+    public JCTree.JCExpression type(Type rawLocalVariableType) {
+        return maker.Type(rawLocalVariableType);
     }
 
     private JCTree.JCIdent identity(Symbol symbol) {
-        return treeMaker.Ident(symbol);
+        return maker.Ident(symbol);
+    }
+
+    public void processArrayInitialization(ReifiedArrayInitialization array) {
+        var enclosing = (JCTree.JCVariableDecl) array.enclosingStatement();
+        var varType = simpleTypes.createArray(array.typeVariableSymbol().asType());
+        array.initialization().elemtype = type(simpleTypes.createTypeWithParameters(Object.class));
+        array.initialization().type = simpleTypes.createTypeWithParameters(Object.class);
+        enclosing.init = maker.TypeCast(maker.TypeArray(type(array.typeVariableSymbol().asType())), array.initialization());
+        enclosing.vartype = type(varType);
+        enclosing.type = varType;
+        enclosing.sym.type = varType;
+        enclosing.sym.flags_field = 0;
+        enclosing.sym.adr = 0;
+        suppressUncheckedCast(enclosing);
+    }
+
+    private void suppressUncheckedCast(JCTree.JCVariableDecl enclosing) {
+        if (simpleTypes.hasUncheckedAnnotation(enclosing.getModifiers())) {
+            return;
+        }
+
+        var oldAnnotations = new ArrayList<>(enclosing.mods.annotations);
+        oldAnnotations.add(maker.Annotation(type(simpleTypes.createTypeWithParameters(SuppressWarnings.class)), List.of(maker.Literal("unchecked"))));
+        enclosing.mods.annotations = List.from(oldAnnotations);
     }
 
     public void processMembers(ReifiedDeclaration declaration) {
@@ -55,20 +86,20 @@ public class SimpleMaker {
             return;
         }
 
-        var thisCall = treeMaker.This(declaration.enclosingClass().sym.asType());
-        var localVariableSelection = treeMaker.Select(thisCall, localVariable.getName());
-        var localVariableAssignment = treeMaker.Assign(localVariableSelection, treeMaker.Ident(parameter));
-        var localVariableStatement = treeMaker.at(constructor.pos).Exec(localVariableAssignment);
+        var thisCall = maker.This(declaration.enclosingClass().sym.asType());
+        var localVariableSelection = maker.Select(thisCall, localVariable.getName());
+        var localVariableAssignment = maker.Assign(localVariableSelection, maker.Ident(parameter));
+        var localVariableStatement = maker.at(constructor.pos).Exec(localVariableAssignment);
         var newStats = addStatement(typeParameter, constructor, localVariableStatement);
         constructor.body.stats = List.from(newStats);
     }
 
     // The canonical constructor of a record cannot call another constructor(super() or this()).
     // For some reason though, the generated super() method is still present which makes the compilation process fail.
-    // I have no idea why this happens, maybe the compiler also removes said method call but I couldn't find any evidence of this.
-    // For now this is a work around.
+    // I have no idea why this happens, maybe the compiler also removes said method call, but I couldn't find any evidence of this.
+    // For now this is a workaround.
     private void removeRecordSuperCall(JCTree.JCMethodDecl constructor) {
-        var statements = constructor.body.stats;
+        var statements = constructor.getBody().getStatements();
         if (!TreeInfo.isSuperCall(statements.head)) {
             return;
         }
@@ -77,7 +108,7 @@ public class SimpleMaker {
     }
 
     private LinkedList<JCTree.JCStatement> addStatement(Symbol.TypeVariableSymbol typeParameter, JCTree.JCMethodDecl constructor, JCTree.JCExpressionStatement localVariableStatement) {
-        var newStats = new LinkedList<>(constructor.body.stats);
+        var newStats = new LinkedList<>(constructor.getBody().getStatements());
         if (newStats.isEmpty()) {
             newStats.add(localVariableStatement);
             return newStats;
@@ -115,12 +146,12 @@ public class SimpleMaker {
         var localVariableName = (Name) typeParameter.getSimpleName();
         long rawLocalVariableModifiers = createVariableModifiers(enclosingClass);
 
-        var localVariableModifiers = treeMaker.Modifiers(rawLocalVariableModifiers);
+        var localVariableModifiers = maker.Modifiers(rawLocalVariableModifiers);
 
-        var rawLocalVariableType = simpleTypes.createTypeWithParameter(Class.class, typeParameter);
-        var localVariableType = treeMaker.Type(rawLocalVariableType);
+        var rawLocalVariableType = simpleTypes.createTypeWithParameters(Class.class, typeParameter);
+        var localVariableType = type(rawLocalVariableType);
 
-        var localVariable = treeMaker.at(enclosingClass.pos)
+        var localVariable = maker.at(enclosingClass.pos)
                 .VarDef(localVariableModifiers, localVariableName, localVariableType, null);
         localVariable.sym = new Symbol.VarSymbol(rawLocalVariableModifiers, localVariableName, rawLocalVariableType, enclosingClass.sym);
 
@@ -136,9 +167,9 @@ public class SimpleMaker {
         return Flags.PRIVATE | Flags.FINAL;
     }
 
-    private JCTree.JCVariableDecl addParameter(Element typeParameter, JCTree.JCMethodDecl method) {
-        var paramType = simpleTypes.createTypeWithParameter(Class.class, typeParameter);
-        var param = treeMaker.at(method.pos).Param((Name) typeParameter.getSimpleName(), paramType, method.sym);
+    private JCTree.JCVariableDecl addParameter(Symbol.TypeVariableSymbol typeParameter, JCTree.JCMethodDecl method) {
+        var paramType = simpleTypes.createTypeWithParameters(Class.class, typeParameter);
+        var param = maker.at(method.pos).Param(typeParameter.getSimpleName(), paramType, method.sym);
         param.sym.adr = 0;
         method.params = method.params.prepend(param);
 
@@ -162,7 +193,7 @@ public class SimpleMaker {
                 .filter(param -> param.getSimpleName().contentEquals(name))
                 .findFirst()
                 .map(this::identity)
-                .orElseThrow(() -> new AssertionError("Nested reified parameter cannot be processed if enclosing parameters have not been processed yet"));
+                .orElseThrow(() -> new NoSuchElementException("Nested reified parameter cannot be processed if enclosing parameters have not been processed yet"));
     }
 
     public JCTree.JCIdent createGenericClassLiteral(JCTree.JCClassDecl clazz, Name name) {
@@ -174,6 +205,6 @@ public class SimpleMaker {
                 .findFirst()
                 .map(variable -> variable.sym)
                 .map(this::identity)
-                .orElseThrow(() -> new AssertionError("Nested reified parameter cannot be processed if enclosing parameters have not been processed yet"));
+                .orElseThrow(() -> new NoSuchElementException("Nested reified parameter cannot be processed if enclosing parameters have not been processed yet"));
     }
 }

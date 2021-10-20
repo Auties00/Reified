@@ -5,19 +5,25 @@ import com.sun.source.util.TreeScanner;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
 import it.auties.reified.simplified.SimpleTypes;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
+import static java.util.Collections.*;
+
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ExtendedClassesScanner extends TreeScanner<Void, Void> {
     private final JCTree.JCClassDecl superClass;
     private final SimpleTypes simpleTypes;
     private List<JCTree.JCClassDecl> results;
 
     public ExtendedClassesScanner(JCTree.JCClassDecl superClass, SimpleTypes simpleTypes) {
+        this(superClass, simpleTypes, new ArrayList<>());
         simpleTypes.resolveClass(superClass);
-        this.superClass = superClass;
-        this.simpleTypes = simpleTypes;
     }
 
     @Override
@@ -38,8 +44,8 @@ public class ExtendedClassesScanner extends TreeScanner<Void, Void> {
     }
 
     public List<JCTree.JCClassDecl> scan(JCTree tree) {
-        this.results = new ArrayList<>();
+        results.clear();
         scan(tree, null);
-        return results;
+        return unmodifiableList(results);
     }
 }

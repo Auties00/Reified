@@ -2,13 +2,14 @@ package it.auties.reified.scanner;
 
 import com.sun.source.tree.NewClassTree;
 import com.sun.tools.javac.tree.JCTree;
+import it.auties.reified.model.ReifiedCall;
 import it.auties.reified.model.ReifiedDeclaration;
 import it.auties.reified.simplified.SimpleClasses;
-import it.auties.reified.simplified.SimpleMethods;
+import it.auties.reified.simplified.SimpleTypes;
 
-public class ClassInitializationScanner extends ReifiedScanner {
-    public ClassInitializationScanner(ReifiedDeclaration parameter, SimpleClasses simpleClasses, SimpleMethods simpleMethods) {
-        super(parameter, simpleClasses, simpleMethods);
+public class ClassInitializationScanner extends ReifiedScanner<ReifiedCall> {
+    public ClassInitializationScanner(ReifiedDeclaration parameter, SimpleClasses simpleClasses, SimpleTypes simpleTypes) {
+        super(parameter, simpleClasses, simpleTypes);
     }
 
     @Override
@@ -25,7 +26,7 @@ public class ClassInitializationScanner extends ReifiedScanner {
             return super.visitNewClass(node, unused);
         }
 
-        results().add(buildResultCall(rawTree, initializedClass.get()));
+        results().add(buildCall(rawTree, initializedClass.get()));
         return super.visitNewClass(node, unused);
     }
 }

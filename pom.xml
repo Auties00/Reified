@@ -69,19 +69,19 @@
 
     <properties>
         <java.version>11</java.version>
-        <lombok.version>1.18.20</lombok.version>
+        <lombok.version>1.18.22</lombok.version>
         <compiler.plugin.version>3.8.1</compiler.plugin.version>
         <javadoc.plugin.version>3.2.0</javadoc.plugin.version>
         <deploy.plugin.version>2.8.2</deploy.plugin.version>
         <staging.plugin.version>1.6.7</staging.plugin.version>
         <reified.module>it.auties.reified</reified.module>
-        <open.tree.module>jdk.compiler/com.sun.tools.javac.tree=${reified.module}</open.tree.module>
-        <open.util.module>jdk.compiler/com.sun.tools.javac.util=${reified.module}</open.util.module>
-        <open.code.module>jdk.compiler/com.sun.tools.javac.code=${reified.module}</open.code.module>
-        <open.api.module>jdk.compiler/com.sun.tools.javac.api=${reified.module}</open.api.module>
-        <open.comp.module>jdk.compiler/com.sun.tools.javac.comp=${reified.module}</open.comp.module>
-        <open.jvm.module>jdk.compiler/com.sun.tools.javac.jvm=${reified.module}</open.jvm.module>
-        <open.processing.module>jdk.compiler/com.sun.tools.javac.processing=${reified.module}</open.processing.module>
+        <open.tree.module.to.reified>jdk.compiler/com.sun.tools.javac.tree=${reified.module}</open.tree.module.to.reified>
+        <open.util.module.to.reified>jdk.compiler/com.sun.tools.javac.util=${reified.module}</open.util.module.to.reified>
+        <open.code.module.to.reified>jdk.compiler/com.sun.tools.javac.code=${reified.module}</open.code.module.to.reified>
+        <open.api.module.to.reified>jdk.compiler/com.sun.tools.javac.api=${reified.module}</open.api.module.to.reified>
+        <open.comp.module.to.reified>jdk.compiler/com.sun.tools.javac.comp=${reified.module}</open.comp.module.to.reified>
+        <open.jvm.module.to.reified>jdk.compiler/com.sun.tools.javac.jvm=${reified.module}</open.jvm.module.to.reified>
+        <open.processing.module.to.reified>jdk.compiler/com.sun.tools.javac.processing=${reified.module}</open.processing.module.to.reified>
     </properties>
 
     <dependencies>
@@ -112,20 +112,21 @@
                     </annotationProcessorPaths>
                     <compilerArgs>
                         <arg>--add-exports</arg>
-                        <arg>${open.tree.module}</arg>
+                        <arg>${open.tree.module.to.reified}</arg>
                         <arg>--add-exports</arg>
-                        <arg>${open.util.module}</arg>
+                        <arg>${open.util.module.to.reified}</arg>
                         <arg>--add-exports</arg>
-                        <arg>${open.code.module}</arg>
+                        <arg>${open.code.module.to.reified}</arg>
                         <arg>--add-exports</arg>
-                        <arg>${open.api.module}</arg>
+                        <arg>${open.api.module.to.reified}</arg>
                         <arg>--add-exports</arg>
-                        <arg>${open.comp.module}</arg>
+                        <arg>${open.comp.module.to.reified}</arg>
                         <arg>--add-exports</arg>
-                        <arg>${open.jvm.module}</arg>
+                        <arg>${open.jvm.module.to.reified}</arg>
                         <arg>--add-exports</arg>
-                        <arg>${open.processing.module}</arg>
+                        <arg>${open.processing.module.to.reified}</arg>
                     </compilerArgs>
+                    <fork>true</fork>
                 </configuration>
             </plugin>
             <plugin>
@@ -142,13 +143,13 @@
                 </executions>
                 <configuration>
                     <additionalOptions>
-                        <additionalOption>--add-exports ${open.tree.module}</additionalOption>
-                        <additionalOption>--add-exports ${open.util.module}</additionalOption>
-                        <additionalOption>--add-exports ${open.code.module}</additionalOption>
-                        <additionalOption>--add-exports ${open.api.module}</additionalOption>
-                        <additionalOption>--add-exports ${open.comp.module}</additionalOption>
-                        <additionalOption>--add-exports ${open.jvm.module}</additionalOption>
-                        <additionalOption>--add-exports ${open.processing.module}</additionalOption>
+                        <additionalOption>--add-exports ${open.tree.module.to.reified}</additionalOption>
+                        <additionalOption>--add-exports ${open.util.module.to.reified}</additionalOption>
+                        <additionalOption>--add-exports ${open.code.module.to.reified}</additionalOption>
+                        <additionalOption>--add-exports ${open.api.module.to.reified}</additionalOption>
+                        <additionalOption>--add-exports ${open.comp.module.to.reified}</additionalOption>
+                        <additionalOption>--add-exports ${open.jvm.module.to.reified}</additionalOption>
+                        <additionalOption>--add-exports ${open.processing.module.to.reified}</additionalOption>
                     </additionalOptions>
                     <failOnError>true</failOnError>
                     <debug>true</debug>
