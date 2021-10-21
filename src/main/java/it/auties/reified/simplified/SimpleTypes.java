@@ -9,13 +9,13 @@ import com.sun.tools.javac.util.Assert;
 import com.sun.tools.javac.util.List;
 import it.auties.reified.annotation.Reified;
 import it.auties.reified.model.ReifiedCall;
-import it.auties.reified.util.CollectionUtils;
 import it.auties.reified.util.StreamUtils;
 import lombok.AllArgsConstructor;
 import lombok.experimental.ExtensionMethod;
 
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeMirror;
 import java.util.Collection;
@@ -29,7 +29,7 @@ import static com.sun.tools.javac.code.TypeTag.WILDCARD;
 import static com.sun.tools.javac.tree.JCTree.Tag.*;
 
 @AllArgsConstructor
-@ExtensionMethod({CollectionUtils.class, StreamUtils.class})
+@ExtensionMethod(StreamUtils.class)
 public class SimpleTypes {
     private final ProcessingEnvironment environment;
     private final Types types;
@@ -129,11 +129,10 @@ public class SimpleTypes {
 
     public List<Type> eraseTypeVariableFromTypeParameters(Symbol.TypeVariableSymbol typeParameter, List<Symbol.TypeVariableSymbol> parameters, List<JCTree.JCExpression> arguments, JCTree.JCClassDecl enclosingClass) {
         var env = findClassEnv(enclosingClass);
-        return parameters.stream()
-                .filter(typeParameter::equals)
-                .map(parameters::indexOf)
-                .map(index -> arguments.getSafe(index))
-                .onlyPresent()
+        return IntStream.range(0, parameters.size())
+                .limit(arguments.size())
+                .filter(index -> Objects.equals(parameters.get(index), typeParameter))
+                .mapToObj(arguments::get)
                 .map(arg -> inferReifiedType(arg, env))
                 .onlyPresent()
                 .map(this::parseArgument)
@@ -303,7 +302,7 @@ public class SimpleTypes {
             return ((JCTree.JCNewClass) invocation).getArguments();
         }
 
-        throw new IllegalArgumentException("Cannot find arguments of poly expression: expected APPLY or NEWCLASS, got " + invocation.getTag());
+        throw new IllegalArgumentException("Cannot find arguments of poly expression: expected APPLY or NEW_CLASS, got " + invocation.getTag());
     }
 
     private Type inferReifiedType(JCTree.JCNewClass invocation, ReifiedCall call) {
@@ -357,19 +356,27 @@ public class SimpleTypes {
 
     private boolean isUncheckedAnnotation(JCTree.JCAnnotation annotation) {
         var type = TreeInfo.symbol(annotation.getAnnotationType()).asType();
-        if(!type.equals(createTypeWithParameters(SuppressWarnings.class))){
+        if(!types.isSameType(type, createTypeWithParameters(SuppressWarnings.class))){
             return false;
         }
 
-        var annotationValue = annotation.args.head;
-        if(annotationValue.getTag() != LITERAL){
+        var annotationValueAssignment = annotation.args.head;
+        if(annotationValueAssignment.getTag() != ASSIGN){
+            System.err.printf("SimpleTypes#isUncheckedAnnotation: unexpectedly got tag %s(report this on github)", annotationValueAssignment.getTag().name());
             return false;
         }
 
-        return ((JCTree.JCLiteral) annotationValue).getValue().equals("unchecked");
-    }
+        var annotationValue = ((JCTree.JCAssign) annotationValueAssignment).getExpression();
+        if (annotationValue.getTag() == LITERAL) {
+            return ((JCTree.JCLiteral) annotationValue).getValue().equals("unchecked");
+        }
 
-    public boolean equals(Type first, Type second){
-        return types.isSameType(first, second);
+        var annotationValueSymbol = TreeInfo.symbol(annotationValue);
+        if(!(annotationValueSymbol instanceof Symbol.VarSymbol)){
+            System.err.printf("SimpleTypes#isUncheckedAnnotation: unexpectedly got symbol %s(report this on github)", (annotationValueSymbol == null ? "unknown" : annotation.getKind().name()));
+            return false;
+        }
+
+        return ((Symbol.VarSymbol) annotationValueSymbol).getConstantValue().equals("unchecked");
     }
 }

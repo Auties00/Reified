@@ -148,6 +148,7 @@ public class ReifiedProcessor extends AbstractProcessor {
         reifiedDeclarations.forEach(simpleMaker::processMembers);
         reifiedResults.forEach(this::applyParameter);
         reifiedDeclarations.forEach(this::processArrayInitializations);
+        reifiedDeclarations.stream().map(ReifiedDeclaration::enclosingClass).forEach(System.err::println);
         diagnosticHandlerWorker.useJavacHandler();
         diagnosticHandlerWorker.reportErrors();
     }

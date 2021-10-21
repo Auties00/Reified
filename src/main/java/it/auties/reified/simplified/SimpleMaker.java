@@ -36,17 +36,24 @@ public class SimpleMaker {
     }
 
     public void processArrayInitialization(ReifiedArrayInitialization array) {
-        var enclosing = (JCTree.JCVariableDecl) array.enclosingStatement();
         var varType = simpleTypes.createArray(array.typeVariableSymbol().asType());
         array.initialization().elemtype = type(simpleTypes.createTypeWithParameters(Object.class));
         array.initialization().type = simpleTypes.createTypeWithParameters(Object.class);
-        enclosing.init = maker.TypeCast(maker.TypeArray(type(array.typeVariableSymbol().asType())), array.initialization());
-        enclosing.vartype = type(varType);
-        enclosing.type = varType;
-        enclosing.sym.type = varType;
-        enclosing.sym.flags_field = 0;
-        enclosing.sym.adr = 0;
-        suppressUncheckedCast(enclosing);
+        if(!array.hasEnclosingStatement()){
+            return;
+        }
+
+        if (array.enclosingStatement().getTag() != JCTree.Tag.VARDEF) {
+            return;
+        }
+
+        var enclosingVariable = (JCTree.JCVariableDecl) array.enclosingStatement();
+        enclosingVariable.init = maker.TypeCast(maker.TypeArray(type(array.typeVariableSymbol().asType())), array.initialization());
+        enclosingVariable.vartype = type(varType);
+        enclosingVariable.type = varType;
+        enclosingVariable.sym.type = varType;
+        enclosingVariable.sym.flags_field = 0;
+        enclosingVariable.sym.adr = 0;
     }
 
     private void suppressUncheckedCast(JCTree.JCVariableDecl enclosing) {

@@ -16,7 +16,6 @@ public class IllegalReflection {
     public IllegalReflection(){
         this.unsafe = getUnsafe();
         this.offset = findOffset();
-        System.err.printf("IllegalReflection detected override offset: %s%n", offset);
     }
 
     private long findOffset() {
@@ -24,16 +23,15 @@ public class IllegalReflection {
             var offsetField = AccessibleObject.class.getDeclaredField("override");
             return unsafe.objectFieldOffset(offsetField);
         }catch (Throwable throwable){
-            throwable.printStackTrace();
-            return findOffsetFallback();
+            return findOffsetFallback(throwable);
         }
     }
 
-    private long findOffsetFallback() {
+    private long findOffsetFallback(Throwable throwable) {
         try {
             return unsafe.objectFieldOffset(Placeholder.class.getDeclaredField("override"));
         }catch (Throwable innerThrowable){
-            System.err.printf("IllegalReflection final throwable %s%n", innerThrowable.getMessage());
+            System.err.printf("IllegalReflection: findOffset failed with message %s, findOffsetFallback failed with message %s so -1 was set as the override offset%n", throwable.getMessage(), innerThrowable.getMessage());
             return -1;
         }
     }

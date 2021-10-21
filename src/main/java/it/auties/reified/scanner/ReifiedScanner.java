@@ -34,7 +34,7 @@ public abstract class ReifiedScanner<T> extends TreeScanner<Void, Void> {
 
     @Override
     public Void scan(Tree tree, Void unused) {
-        if (tree instanceof JCTree.JCStatement) {
+        if (tree instanceof JCTree.JCStatement || tree instanceof JCTree.JCExpression) {
             enclosingStatement(null);
         }
 
@@ -67,6 +67,12 @@ public abstract class ReifiedScanner<T> extends TreeScanner<Void, Void> {
     public Void visitVariable(VariableTree node, Void unused) {
         enclosingStatement((JCTree.JCVariableDecl) node);
         return super.visitVariable(node, unused);
+    }
+
+    @Override
+    public Void visitExpressionStatement(ExpressionStatementTree node, Void unused) {
+        enclosingStatement((JCTree.JCExpressionStatement) node);
+        return super.visitExpressionStatement(node, unused);
     }
 
     protected ReifiedCall buildCall(JCTree.JCPolyExpression tree, Symbol.MethodSymbol invoked) {
