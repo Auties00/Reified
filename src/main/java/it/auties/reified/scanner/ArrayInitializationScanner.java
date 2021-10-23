@@ -2,7 +2,6 @@ package it.auties.reified.scanner;
 
 import com.sun.source.tree.AssignmentTree;
 import com.sun.source.tree.NewArrayTree;
-import com.sun.source.tree.Tree;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
@@ -12,7 +11,6 @@ import it.auties.reified.simplified.SimpleClasses;
 import it.auties.reified.simplified.SimpleTypes;
 
 public class ArrayInitializationScanner extends ReifiedScanner<ReifiedArrayInitialization> {
-    private JCTree.JCExpression enclosingExpression;
     public ArrayInitializationScanner(ReifiedDeclaration parameter, SimpleClasses simpleClasses, SimpleTypes simpleTypes) {
         super(parameter, simpleClasses, simpleTypes);
     }

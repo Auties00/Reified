@@ -379,4 +379,8 @@ public class SimpleTypes {
 
         return ((Symbol.VarSymbol) annotationValueSymbol).getConstantValue().equals("unchecked");
     }
+
+    public boolean sameType(Type first, Type second){
+        return types.isSameType(first, second);
+    }
 }

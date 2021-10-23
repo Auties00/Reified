@@ -11,7 +11,6 @@ import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.ListBuffer;
-import com.sun.tools.javac.util.Names;
 import it.auties.reified.model.ReifiedCall;
 import it.auties.reified.model.ReifiedCandidate;
 import it.auties.reified.model.ReifiedDeclaration;
@@ -36,7 +35,6 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Objects;
 import java.util.Set;
@@ -72,7 +70,6 @@ public class ReifiedProcessor extends AbstractProcessor {
         var attr = Attr.instance(context);
         var enter = Enter.instance(context);
         var types = Types.instance(context);
-        var names = Names.instance(context);
         var treeMaker = TreeMaker.instance(context);
         var memberEnter = MemberEnter.instance(context);
 
@@ -80,7 +77,7 @@ public class ReifiedProcessor extends AbstractProcessor {
         this.trees = JavacTrees.instance(context);
         this.simpleTypes = new SimpleTypes(processingEnv, types, attr, enter, memberEnter);
         this.simpleClasses = new SimpleClasses(simpleTypes);
-        this.simpleMaker = new SimpleMaker(treeMaker, simpleTypes, names);
+        this.simpleMaker = new SimpleMaker(treeMaker, simpleTypes);
         this.diagnosticHandlerWorker = new DiagnosticHandlerWorker(attr);
     }
 

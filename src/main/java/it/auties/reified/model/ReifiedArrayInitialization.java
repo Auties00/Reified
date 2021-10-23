@@ -3,6 +3,7 @@ package it.auties.reified.model;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.util.List;
 import it.auties.reified.simplified.SimpleTypes;
 import lombok.*;
 import lombok.experimental.Accessors;
@@ -16,8 +17,5 @@ public class ReifiedArrayInitialization {
     @NonNull JCTree.JCClassDecl enclosingClass;
     JCTree.JCMethodDecl enclosingMethod;
     JCTree.JCStatement enclosingStatement;
-
-    public boolean hasEnclosingStatement(){
-        return enclosingStatement() != null;
-    }
+    List<JCTree.JCExpression> enclosingExpressions;
 }

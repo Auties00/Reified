@@ -9,19 +9,20 @@ import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.Name;
-import com.sun.tools.javac.util.Names;
 import it.auties.reified.model.ReifiedArrayInitialization;
 import it.auties.reified.model.ReifiedDeclaration;
 import lombok.AllArgsConstructor;
 
 import javax.lang.model.element.Element;
-import java.util.*;
+import javax.lang.model.element.ElementKind;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.NoSuchElementException;
 
 @AllArgsConstructor
 public class SimpleMaker {
     private final TreeMaker maker;
     private final SimpleTypes simpleTypes;
-    private final Names names;
 
     public JCTree.JCExpression classLiteral(Type type) {
         return maker.ClassLiteral(type);
@@ -36,24 +37,103 @@ public class SimpleMaker {
     }
 
     public void processArrayInitialization(ReifiedArrayInitialization array) {
+        var expressions = array.enclosingExpressions().reverse();
+        if(expressions.head == null || expressions.head.getTag() != JCTree.Tag.NEWARRAY){
+            throw new IllegalArgumentException("Cannot process array init, corrupted expression stack: " + array);
+        }
+
+        castArrayToParameter(expressions);
         var varType = simpleTypes.createArray(array.typeVariableSymbol().asType());
         array.initialization().elemtype = type(simpleTypes.createTypeWithParameters(Object.class));
         array.initialization().type = simpleTypes.createTypeWithParameters(Object.class);
-        if(!array.hasEnclosingStatement()){
+        if (!(array.enclosingStatement() instanceof JCTree.JCVariableDecl)) {
             return;
         }
 
-        if (array.enclosingStatement().getTag() != JCTree.Tag.VARDEF) {
-            return;
-        }
+        changeEnclosingVariableArrayType(array, varType);
+    }
 
+    private void changeEnclosingVariableArrayType(ReifiedArrayInitialization array, Type.ArrayType varType) {
         var enclosingVariable = (JCTree.JCVariableDecl) array.enclosingStatement();
+        if (!TreeInfo.skipParens(enclosingVariable.init).equals(array.initialization())) {
+            return;
+        }
+
         enclosingVariable.init = maker.TypeCast(maker.TypeArray(type(array.typeVariableSymbol().asType())), array.initialization());
         enclosingVariable.vartype = type(varType);
         enclosingVariable.type = varType;
         enclosingVariable.sym.type = varType;
         enclosingVariable.sym.flags_field = 0;
         enclosingVariable.sym.adr = 0;
+        suppressUncheckedCast(enclosingVariable);
+    }
+
+    // There is room for improvement in this method.
+    // Performance shouldn't be that bad considering that the list isn't supposed to be massive,
+    // though a better approach would be better.
+    private void castArrayToParameter(List<JCTree.JCExpression> expressions) {
+        expressions.forEach(expression -> {
+            var headIndex = findHeadArgument(expressions, expression);
+            if (headIndex == -1) {
+                return;
+            }
+
+            castArrayToParameter(expressions, expression, headIndex);
+        });
+    }
+
+    private int findHeadArgument(List<JCTree.JCExpression> expressions, JCTree.JCExpression expression) {
+        switch (expression.getTag()){
+            case NEWCLASS:
+                return findHeadArgument(expressions, ((JCTree.JCNewClass) expression).getArguments());
+            case APPLY:
+                return findHeadArgument(expressions, ((JCTree.JCMethodInvocation) expression).getArguments());
+            default:
+                return -1;
+        }
+    }
+
+    private int findHeadArgument(List<JCTree.JCExpression> expressions, List<JCTree.JCExpression> arguments) {
+        for(var x = 0; x < arguments.size(); x++){
+            var argument = TreeInfo.skipParens(arguments.get(x));
+            if(argument.equals(expressions.head)){
+                return x;
+            }
+        }
+
+        return -1;
+    }
+
+    private void castArrayToParameter(List<JCTree.JCExpression> expressions, JCTree.JCExpression expression, int headIndex) {
+        switch (expression.getTag()){
+            case NEWCLASS:
+                castArrayToClassParameter(expressions, (JCTree.JCNewClass) expression, headIndex);
+                break;
+            case APPLY:
+                castArrayToMethodParameter(expressions, (JCTree.JCMethodInvocation) expression, headIndex);
+                break;
+            default:
+                throw new IllegalArgumentException("Unexpected tree: " + expression);
+        }
+    }
+
+    private void castArrayToClassParameter(List<JCTree.JCExpression> expressions, JCTree.JCNewClass candidate, int parameterIndex) {
+        var invocationArguments = new ArrayList<>(candidate.getArguments());
+        invocationArguments.remove(parameterIndex);
+        invocationArguments.add(parameterIndex, maker.TypeCast(candidate.constructor.asType().getParameterTypes().get(parameterIndex), expressions.head));
+        candidate.args = List.from(invocationArguments);
+    }
+
+    private void castArrayToMethodParameter(List<JCTree.JCExpression> expressions, JCTree.JCMethodInvocation candidate, int parameterIndex) {
+        var invoked = TreeInfo.symbol(candidate.getMethodSelect());
+        if(invoked.getKind() != ElementKind.METHOD){
+            return;
+        }
+
+        var invocationArguments = new ArrayList<>(candidate.getArguments());
+        invocationArguments.remove(parameterIndex);
+        invocationArguments.add(parameterIndex, maker.TypeCast(invoked.asType().getParameterTypes().get(parameterIndex), expressions.head));
+        candidate.args = List.from(invocationArguments);
     }
 
     private void suppressUncheckedCast(JCTree.JCVariableDecl enclosing) {
