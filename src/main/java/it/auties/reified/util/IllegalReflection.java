@@ -2,20 +2,56 @@ package it.auties.reified.util;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.experimental.Accessors;
 import sun.misc.Unsafe;
 
+import java.io.OutputStream;
 import java.lang.reflect.AccessibleObject;
+import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.NoSuchElementException;
 
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Accessors(fluent = true)
 public class IllegalReflection {
-    private static final String UNSAFE_FIELD_NAME = "theUnsafe";
+    @Getter
+    private static final IllegalReflection singleton = new IllegalReflection();
     private final Unsafe unsafe;
     private final long offset;
-
-    public IllegalReflection(){
+    private IllegalReflection(){
         this.unsafe = getUnsafe();
         this.offset = findOffset();
+        openJavac();
+    }
+
+    private void openJavac(){
+        try {
+            var jdkCompilerModule = findCompilerModule();
+            var addOpensMethod = Module.class.getDeclaredMethod("implAddOpens", String.class, Module.class);
+            var addOpensMethodOffset = unsafe.objectFieldOffset(ModulePlaceholder.class.getDeclaredField("first"));
+            unsafe.putBooleanVolatile(addOpensMethod, addOpensMethodOffset, true);
+            Arrays.stream(Package.getPackages())
+                    .map(Package::getName)
+                    .filter(pack -> pack.startsWith("com.sun.tools.javac"))
+                    .forEach(pack -> invokeAccessibleMethod(addOpensMethod, jdkCompilerModule, pack, IllegalReflection.class.getModule()));
+        }catch (Throwable throwable){
+            throw new UnsupportedOperationException("Cannot open Javac Modules", throwable);
+        }
+    }
+
+    private Module findCompilerModule() {
+        return ModuleLayer.boot()
+                .findModule("jdk.compiler")
+                .orElseThrow(() -> new ExceptionInInitializerError("Missing module: jdk.compiler"));
+    }
+
+    private void invokeAccessibleMethod(Method method, Object caller, Object... arguments){
+        try {
+            method.invoke(caller, arguments);
+        }catch (Throwable throwable){
+            throw new RuntimeException("Cannot invoke method", throwable);
+        }
     }
 
     private long findOffset() {
@@ -23,26 +59,25 @@ public class IllegalReflection {
             var offsetField = AccessibleObject.class.getDeclaredField("override");
             return unsafe.objectFieldOffset(offsetField);
         }catch (Throwable throwable){
-            return findOffsetFallback(throwable);
+            return findOffsetFallback();
         }
     }
 
-    private long findOffsetFallback(Throwable throwable) {
+    private long findOffsetFallback() {
         try {
-            return unsafe.objectFieldOffset(Placeholder.class.getDeclaredField("override"));
+            return unsafe.objectFieldOffset(AccessibleObjectPlaceholder.class.getDeclaredField("override"));
         }catch (Throwable innerThrowable){
-            System.err.printf("IllegalReflection: findOffset failed with message %s, findOffsetFallback failed with message %s so -1 was set as the override offset%n", throwable.getMessage(), innerThrowable.getMessage());
             return -1;
         }
     }
 
     private Unsafe getUnsafe() {
         try {
-            var unsafeField = Unsafe.class.getDeclaredField(UNSAFE_FIELD_NAME);
+            var unsafeField = Unsafe.class.getDeclaredField("theUnsafe");
             unsafeField.setAccessible(true);
             return (Unsafe) unsafeField.get(null);
         }catch (NoSuchFieldException exception){
-            throw new NoSuchElementException(String.format("Cannot find %s in %s", UNSAFE_FIELD_NAME, Unsafe.class.getName()));
+            throw new NoSuchElementException("Cannot find unsafe field in wrapper class");
         }catch (IllegalAccessException exception){
             throw new UnsupportedOperationException(String.format("Access to %s has been blocked: the day has come. In this future has the OpenJDK team created a publicly available compiler api that can do something? Probably not", Unsafe.class.getName()), exception);
         }
@@ -58,9 +93,18 @@ public class IllegalReflection {
         return object;
     }
 
-    @SuppressWarnings("unused")
-    private static class Placeholder {
+    @SuppressWarnings("all")
+    private static class AccessibleObjectPlaceholder {
         boolean override;
         Object accessCheckCache;
+    }
+
+    @SuppressWarnings("all")
+    public static class ModulePlaceholder {
+        boolean first;
+        static final Object staticObj = OutputStream.class;
+        volatile Object second;
+        private static volatile boolean staticSecond;
+        private static volatile boolean staticThird;
     }
 }

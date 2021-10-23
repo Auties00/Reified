@@ -14,7 +14,7 @@ import java.util.Queue;
 import java.util.Set;
 
 public class DiagnosticHandlerWorker {
-    private static final IllegalReflection REFLECTION = new IllegalReflection();
+    private static final IllegalReflection REFLECTION = IllegalReflection.singleton();
     private static final Set<String> DISCARDED_ERROR_CODES = Set.of("compiler.err.generic.array.creation");
     private static final String ATTR_LOG_FIELD = "log";
     private static final String LOG_HANDLER_FIELD = "diagnosticHandler";

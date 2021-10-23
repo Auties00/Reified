@@ -11,7 +11,7 @@ import java.util.Optional;
 
 @UtilityClass
 public class SimpleContext {
-    private final IllegalReflection REFLECTION = new IllegalReflection();
+    private final IllegalReflection REFLECTION = IllegalReflection.singleton();
     private final String JAVAC_ENV = "com.sun.tools.javac.processing.JavacProcessingEnvironment";
     private final String GRADLE_WRAPPED_FIELD = "delegate";
 
@@ -58,9 +58,7 @@ public class SimpleContext {
         }
 
         try {
-            var field = clazz.getDeclaredField(fieldName);
-            field.setAccessible(true);
-            return Optional.of((JavacProcessingEnvironment) field.get(handler));
+            return Optional.of((JavacProcessingEnvironment) REFLECTION.open(clazz.getDeclaredField(fieldName)).get(handler));
         } catch (NoSuchFieldException ignored) {
             return resolveFieldRecursively(clazz.getSuperclass(), fieldName, handler);
         } catch (IllegalAccessException exception) {
