@@ -1,11 +1,11 @@
 package it.auties.reified.model;
 
 import com.sun.tools.javac.code.Symbol;
-import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.util.List;
-import it.auties.reified.simplified.SimpleTypes;
-import lombok.*;
+import lombok.NonNull;
+import lombok.ToString;
+import lombok.Value;
 import lombok.experimental.Accessors;
 
 @Value

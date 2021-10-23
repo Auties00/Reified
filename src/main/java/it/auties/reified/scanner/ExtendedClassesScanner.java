@@ -7,13 +7,11 @@ import com.sun.tools.javac.tree.TreeInfo;
 import it.auties.reified.simplified.SimpleTypes;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
-import lombok.RequiredArgsConstructor;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
-import static java.util.Collections.*;
+import static java.util.Collections.unmodifiableList;
 
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ExtendedClassesScanner extends TreeScanner<Void, Void> {

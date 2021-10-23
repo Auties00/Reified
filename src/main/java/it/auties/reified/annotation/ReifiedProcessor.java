@@ -145,7 +145,7 @@ public class ReifiedProcessor extends AbstractProcessor {
         reifiedDeclarations.forEach(simpleMaker::processMembers);
         reifiedResults.forEach(this::applyParameter);
         reifiedDeclarations.forEach(this::processArrayInitializations);
-        reifiedDeclarations.stream().map(ReifiedDeclaration::enclosingClass).forEach(System.err::println);
+        debug();
         diagnosticHandlerWorker.useJavacHandler();
         diagnosticHandlerWorker.reportErrors();
     }
@@ -304,5 +304,15 @@ public class ReifiedProcessor extends AbstractProcessor {
             default:
                 throw new IllegalArgumentException("Cannot check class scope, unknown modifier: " + reifiedDeclaration.modifier());
         }
+    }
+
+    private void debug(){
+        if(!Boolean.parseBoolean(processingEnv.getOptions().get("-reified.debug"))){
+            return;
+        }
+
+        reifiedDeclarations.stream()
+                .map(ReifiedDeclaration::enclosingClass)
+                .forEach(System.err::println);
     }
 }

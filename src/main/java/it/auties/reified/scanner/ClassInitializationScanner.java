@@ -7,8 +7,6 @@ import it.auties.reified.model.ReifiedDeclaration;
 import it.auties.reified.simplified.SimpleClasses;
 import it.auties.reified.simplified.SimpleTypes;
 
-import java.util.Set;
-
 public class ClassInitializationScanner extends ReifiedScanner<ReifiedCall> {
     public ClassInitializationScanner(ReifiedDeclaration parameter, SimpleClasses simpleClasses, SimpleTypes simpleTypes) {
         super(parameter, simpleClasses, simpleTypes);

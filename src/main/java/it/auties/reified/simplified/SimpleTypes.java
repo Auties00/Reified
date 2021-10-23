@@ -15,7 +15,6 @@ import lombok.experimental.ExtensionMethod;
 
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeMirror;
 import java.util.Collection;

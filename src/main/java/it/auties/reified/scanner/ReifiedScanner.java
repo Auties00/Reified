@@ -1,11 +1,12 @@
 package it.auties.reified.scanner;
 
-import com.sun.source.tree.*;
+import com.sun.source.tree.ClassTree;
+import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.Tree;
 import com.sun.source.util.TreeScanner;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.util.Assert;
-import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.ListBuffer;
 import it.auties.reified.model.ReifiedArrayInitialization;
 import it.auties.reified.model.ReifiedCall;
@@ -17,7 +18,6 @@ import lombok.EqualsAndHashCode;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.Accessors;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 

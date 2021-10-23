@@ -12,7 +12,6 @@ import lombok.NonNull;
 
 import javax.lang.model.element.ElementKind;
 import java.util.Optional;
-import java.util.Set;
 
 public class MethodInvocationScanner extends ReifiedScanner<ReifiedCall> {
     public MethodInvocationScanner(ReifiedDeclaration parameter, SimpleClasses simpleClasses, SimpleTypes simpleTypes) {

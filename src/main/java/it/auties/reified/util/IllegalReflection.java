@@ -50,7 +50,7 @@ public class IllegalReflection {
         try {
             method.invoke(caller, arguments);
         }catch (Throwable throwable){
-            throw new RuntimeException("Cannot invoke method", throwable);
+            throw new RuntimeException("Cannot invoke accessible method", throwable);
         }
     }
 
@@ -79,7 +79,7 @@ public class IllegalReflection {
         }catch (NoSuchFieldException exception){
             throw new NoSuchElementException("Cannot find unsafe field in wrapper class");
         }catch (IllegalAccessException exception){
-            throw new UnsupportedOperationException(String.format("Access to %s has been blocked: the day has come. In this future has the OpenJDK team created a publicly available compiler api that can do something? Probably not", Unsafe.class.getName()), exception);
+            throw new UnsupportedOperationException("Access to the unsafe wrapper has been blocked: the day has come. In this future has the OpenJDK team created a publicly available compiler api that can do something? Probably not", exception);
         }
     }
 
