@@ -12,12 +12,10 @@ import java.util.Optional;
 @UtilityClass
 public class SimpleContext {
     private final IllegalReflection REFLECTION = IllegalReflection.singleton();
-    private final String JAVAC_ENV = "com.sun.tools.javac.processing.JavacProcessingEnvironment";
-    private final String GRADLE_WRAPPED_FIELD = "delegate";
 
     public Context resolveContext(ProcessingEnvironment environment) {
         var envClass = environment.getClass();
-        if (envClass.getName().equals(JAVAC_ENV)) {
+        if (envClass.getName().equals("com.sun.tools.javac.processing.JavacProcessingEnvironment")) {
             return resolveJavacContext(environment, envClass);
         }
 
@@ -47,7 +45,7 @@ public class SimpleContext {
     }
 
     private Context resolveGradleEnvironment(ProcessingEnvironment environment) {
-        return resolveFieldRecursively(environment.getClass(), GRADLE_WRAPPED_FIELD, environment)
+        return resolveFieldRecursively(environment.getClass(), "delegate", environment)
                 .orElseThrow(() -> new UnsupportedOperationException("Unsupported environment!"))
                 .getContext();
     }
