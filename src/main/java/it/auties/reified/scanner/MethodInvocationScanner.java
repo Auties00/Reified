@@ -10,7 +10,6 @@ import it.auties.reified.simplified.SimpleClasses;
 import it.auties.reified.simplified.SimpleTypes;
 import lombok.NonNull;
 
-import javax.lang.model.element.ElementKind;
 import java.util.Optional;
 
 public class MethodInvocationScanner extends ReifiedScanner<ReifiedCall> {
@@ -35,7 +34,7 @@ public class MethodInvocationScanner extends ReifiedScanner<ReifiedCall> {
         var methodEnv = simpleTypes().findMethodEnv(enclosingMethod(), classEnv);
         simpleTypes().resolveEnv(methodEnv);
         var symbol = TreeInfo.symbol(invocation.getMethodSelect());
-        if (symbol.getKind() != ElementKind.METHOD) {
+        if (!(symbol instanceof Symbol.MethodSymbol)) {
             return Optional.empty();
         }
 

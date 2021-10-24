@@ -17,7 +17,7 @@ public class ReifiedCandidate {
     @NonNull JCTree.JCClassDecl enclosingClass;
     JCTree.JCMethodDecl enclosingMethod;
 
-    public boolean isClass() {
+    public boolean hasClass() {
         return Objects.isNull(enclosingMethod());
     }
 

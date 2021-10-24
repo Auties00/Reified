@@ -27,20 +27,19 @@ import it.auties.reified.util.StreamUtils;
 import lombok.SneakyThrows;
 import lombok.experimental.ExtensionMethod;
 
-import javax.annotation.processing.AbstractProcessor;
-import javax.annotation.processing.RoundEnvironment;
-import javax.annotation.processing.SupportedAnnotationTypes;
-import javax.annotation.processing.SupportedSourceVersion;
+import javax.annotation.processing.*;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
 import java.util.Collection;
 import java.util.Objects;
 import java.util.Set;
 
+import static java.lang.Boolean.parseBoolean;
+
 @SupportedAnnotationTypes(Reified.PATH)
 @SupportedSourceVersion(SourceVersion.RELEASE_11)
+@SupportedOptions("reified.debug")
 @ExtensionMethod(StreamUtils.class)
 public class ReifiedProcessor extends AbstractProcessor {
     private SimpleTypes simpleTypes;
@@ -97,20 +96,21 @@ public class ReifiedProcessor extends AbstractProcessor {
     private ReifiedCandidate findAnnotatedTree(Element element) {
         var typeVariable = (Symbol.TypeVariableSymbol) element;
         var owner = typeVariable.getEnclosingElement();
-        switch (owner.getKind()){
-            case CLASS:
-                var classSymbol = (Symbol.ClassSymbol) owner;
-                var classPath = trees.getPath(classSymbol);
-                return new ReifiedCandidate(typeVariable, (JCTree.JCClassDecl) classPath.getLeaf(), null);
-            case METHOD:
-                var methodSymbol = (Symbol.MethodSymbol) owner;
-                var enclosingClassSymbol = (Symbol.ClassSymbol) methodSymbol.getEnclosingElement();
-                var enclosingClassPath = trees.getPath(enclosingClassSymbol);
-                var methodPath = trees.getPath(methodSymbol);
-                return new ReifiedCandidate(typeVariable, (JCTree.JCClassDecl) enclosingClassPath.getLeaf(), (JCTree.JCMethodDecl) methodPath.getLeaf());
-            default:
-                throw new IllegalArgumentException("Cannot find annotated tree, unknown owner: " + owner.getClass().getName());
+        if(owner instanceof Symbol.ClassSymbol){
+            var classSymbol = (Symbol.ClassSymbol) owner;
+            var classPath = trees.getPath(classSymbol);
+            return new ReifiedCandidate(typeVariable, (JCTree.JCClassDecl) classPath.getLeaf(), null);
         }
+
+        if(owner instanceof Symbol.MethodSymbol){
+            var methodSymbol = (Symbol.MethodSymbol) owner;
+            var enclosingClassSymbol = (Symbol.ClassSymbol) methodSymbol.getEnclosingElement();
+            var enclosingClassPath = trees.getPath(enclosingClassSymbol);
+            var methodPath = trees.getPath(methodSymbol);
+            return new ReifiedCandidate(typeVariable, (JCTree.JCClassDecl) enclosingClassPath.getLeaf(), (JCTree.JCMethodDecl) methodPath.getLeaf());
+        }
+
+        throw new IllegalArgumentException("Cannot find annotated tree, unknown owner: " + owner.getClass().getName());
     }
 
     private List<ReifiedDeclaration> parseCandidates(List<ReifiedCandidate> candidates) {
@@ -124,13 +124,13 @@ public class ReifiedProcessor extends AbstractProcessor {
                 .typeParameter(candidate.typeVariable())
                 .enclosingClass(candidate.enclosingClass())
                 .methods(findMembers(candidate))
-                .isClass(candidate.isClass())
+                .isClass(candidate.hasClass())
                 .modifier(simpleClasses.findRealAccess(candidate.enclosingClass(), candidate.enclosingMethod()))
                 .build();
     }
 
     private List<JCTree.JCMethodDecl> findMembers(ReifiedCandidate candidate) {
-        if (!candidate.isClass()) {
+        if (!candidate.hasClass()) {
             return List.of(candidate.enclosingMethod());
         }
 
@@ -253,28 +253,30 @@ public class ReifiedProcessor extends AbstractProcessor {
     }
 
     public JCTree.JCExpression createClassLiteral(Type type, JCTree.JCClassDecl clazz, JCTree.JCMethodDecl method) {
-        if (!simpleTypes.isGeneric(type)) {
+        if (!simpleTypes.generic(type)) {
             return simpleMaker.classLiteral(type);
         }
 
         var typeSymbol = (Symbol.TypeVariableSymbol) type.asElement().baseSymbol();
-        if (!simpleTypes.isReified(typeSymbol)) {
+        if (!simpleTypes.reified(typeSymbol)) {
             processTypeParameter(typeSymbol, clazz, method);
         }
 
         var name = type.asElement().getSimpleName();
-        switch (typeSymbol.getEnclosingElement().getKind()) {
-            case CLASS:
-                return simpleMaker.createGenericClassLiteral(clazz, name);
-            case METHOD:
-                return simpleMaker.createGenericMethodLiteral(method, name);
-            default:
-                throw new IllegalArgumentException("Cannot create class literal, unknown type symbol owner tag: " + typeSymbol.getEnclosingElement().getKind());
+        var enclosing = typeSymbol.getEnclosingElement();
+        if(enclosing instanceof Symbol.ClassSymbol){
+            return simpleMaker.createGenericClassLiteral(clazz, name);
         }
+
+        if(enclosing instanceof Symbol.MethodSymbol){
+            return simpleMaker.createGenericMethodLiteral(method, name);
+        }
+
+        throw new IllegalArgumentException("Cannot create class literal, unknown type symbol owner tag: " + enclosing.getClass().getName());
     }
 
     private void processTypeParameter(Symbol.TypeVariableSymbol typeSymbol, JCTree.JCClassDecl clazz, JCTree.JCMethodDecl method) {
-        var enclosingMethod = typeSymbol.getEnclosingElement().getKind() != ElementKind.CLASS ? method : null;
+        var enclosingMethod = typeSymbol.getEnclosingElement() instanceof Symbol.ClassSymbol ? null : method;
         var candidate = new ReifiedCandidate(typeSymbol, clazz, enclosingMethod);
         var declaration = parseCandidate(candidate);
         processTypeParameter(declaration);
@@ -307,12 +309,11 @@ public class ReifiedProcessor extends AbstractProcessor {
     }
 
     private void debug(){
-        if(!Boolean.parseBoolean(processingEnv.getOptions().get("-reified.debug"))){
+        if(!parseBoolean(processingEnv.getOptions().get("reified.debug"))){
             return;
         }
 
-        reifiedDeclarations.stream()
-                .map(ReifiedDeclaration::enclosingClass)
-                .forEach(System.err::println);
+        System.err.println("Reified declarations:");
+        reifiedDeclarations.forEach(System.err::println);
     }
 }

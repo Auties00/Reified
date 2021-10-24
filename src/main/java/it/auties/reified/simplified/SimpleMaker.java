@@ -14,7 +14,6 @@ import it.auties.reified.model.ReifiedDeclaration;
 import lombok.AllArgsConstructor;
 
 import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.NoSuchElementException;
@@ -126,7 +125,7 @@ public class SimpleMaker {
 
     private void castArrayToMethodParameter(List<JCTree.JCExpression> expressions, JCTree.JCMethodInvocation candidate, int parameterIndex) {
         var invoked = TreeInfo.symbol(candidate.getMethodSelect());
-        if(invoked.getKind() != ElementKind.METHOD){
+        if(!(invoked instanceof Symbol.MethodSymbol)){
             return;
         }
 
@@ -165,11 +164,11 @@ public class SimpleMaker {
     private void addParameterAndAssign(ReifiedDeclaration declaration, JCTree.JCMethodDecl constructor, JCTree.JCVariableDecl localVariable) {
         var typeParameter = declaration.typeParameter();
         var parameter = addParameter(typeParameter, constructor);
-        if (simpleTypes.isRecord(declaration.enclosingClass().getModifiers())) {
+        if (simpleTypes.record(declaration.enclosingClass().getModifiers())) {
             removeRecordSuperCall(constructor);
         }
 
-        if (simpleTypes.isCompactConstructor(constructor)) {
+        if (simpleTypes.compactConstructor(constructor)) {
             return;
         }
 
@@ -247,7 +246,7 @@ public class SimpleMaker {
     }
 
     private long createVariableModifiers(JCTree.JCClassDecl enclosingClass) {
-        if (simpleTypes.isRecord(enclosingClass.getModifiers())) {
+        if (simpleTypes.record(enclosingClass.getModifiers())) {
             return Flags.PRIVATE | Flags.FINAL | Flags.COMPOUND | Flags.RECORD;
         }
 

@@ -11,7 +11,6 @@ import lombok.AllArgsConstructor;
 import lombok.NonNull;
 import lombok.experimental.ExtensionMethod;
 
-import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.Modifier;
 import java.util.Optional;
 
@@ -71,7 +70,7 @@ public class SimpleClasses {
     }
 
     private JCTree.JCMethodDecl removeDefaultConstructorFlag(JCTree.JCClassDecl owner, JCTree.JCMethodDecl constructor) {
-        if (simpleTypes.isRecord(owner.getModifiers())) {
+        if (simpleTypes.record(owner.getModifiers())) {
             return constructor;
         }
 
@@ -79,18 +78,18 @@ public class SimpleClasses {
         return constructor;
     }
 
-    public Optional<Symbol.MethodSymbol> resolveClass(@NonNull JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, @NonNull JCTree.JCNewClass invocation) {
+    public Optional<Symbol.MethodSymbol> findAndResolveConstructor(@NonNull JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, @NonNull JCTree.JCNewClass invocation) {
         var classEnv = simpleTypes.findClassEnv(enclosingClass);
         var methodEnv = simpleTypes.findMethodEnv(enclosingMethod, classEnv);
         simpleTypes.resolveEnv(methodEnv);
-        if (invocation.constructor.getKind() != ElementKind.METHOD) {
+        if (!(invocation.constructor instanceof Symbol.MethodSymbol)) { // Do not use Symbol#getKind, might be erroneous, but it is right
             return Optional.empty();
         }
 
         return Optional.of((Symbol.MethodSymbol) invocation.constructor);
     }
 
-    public boolean isAssignable(Type classType, Type assign) {
-        return simpleTypes.isAssignable(classType, assign);
+    public boolean assignable(Type classType, Type assign) {
+        return simpleTypes.assignable(classType, assign);
     }
 }

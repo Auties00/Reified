@@ -15,14 +15,14 @@ public class ClassInitializationScanner extends ReifiedScanner<ReifiedCall> {
     @Override
     public Void visitNewClass(NewClassTree node, Void unused) {
         var rawTree = (JCTree.JCNewClass) node;
-        var initializedClass = simpleClasses().resolveClass(enclosingClass(), enclosingMethod(), rawTree);
+        var initializedClass = simpleClasses().findAndResolveConstructor(enclosingClass(), enclosingMethod(), rawTree);
         if (initializedClass.isEmpty()) {
             return super.visitNewClass(node, unused);
         }
 
         var expected = initializedClass.get().enclClass();
         var actual = parameter().enclosingClass().sym;
-        if (!simpleClasses().isAssignable(actual.asType(), expected.asType())) {
+        if (!simpleTypes().assignable(actual.asType(), expected.asType())) {
             return super.visitNewClass(node, unused);
         }
 

@@ -65,12 +65,12 @@ public class SimpleTypes {
                 .collect(List.collector());
     }
 
-    public boolean isValid(Type type) {
+    public boolean valid(Type type) {
         return !type.isErroneous();
     }
 
     public Optional<Env<AttrContext>> findClassEnv(Tree tree) {
-        if (tree.getKind() != Tree.Kind.CLASS) {
+        if (!(tree instanceof JCTree.JCClassDecl)) {
             return Optional.empty();
         }
 
@@ -91,7 +91,7 @@ public class SimpleTypes {
 
     public Type commonType(List<Type> input) {
         var type = types.lub(input);
-        if (type.getTag() == TypeTag.BOT || !isValid(type)) {
+        if (type.getTag() == TypeTag.BOT || !valid(type)) {
             return null;
         }
 
@@ -106,11 +106,11 @@ public class SimpleTypes {
         return types.boxedTypeOrType(type);
     }
 
-    public boolean isGeneric(Type type) {
+    public boolean generic(Type type) {
         return type.getTag() == TYPEVAR;
     }
 
-    public boolean isNotWildCard(Type type) {
+    public boolean notWildCard(Type type) {
         return type.getTag() != WILDCARD;
     }
 
@@ -119,7 +119,7 @@ public class SimpleTypes {
             return null;
         }
 
-        if (isNotWildCard(type)) {
+        if (notWildCard(type)) {
             return type;
         }
 
@@ -174,7 +174,7 @@ public class SimpleTypes {
     }
 
     public Optional<Type> inferReifiedType(JCTree argument, Env<AttrContext> env) {
-        return Optional.ofNullable(attr.attribType(argument, env)).filter(this::isValid);
+        return Optional.ofNullable(attr.attribType(argument, env)).filter(this::valid);
     }
 
     public List<JCTree.JCExpression> flattenGenericType(JCTree.JCExpression type) {
@@ -218,23 +218,23 @@ public class SimpleTypes {
         return Optional.empty();
     }
 
-    public boolean isAssignable(Type assignable, Type assigned) {
+    public boolean assignable(Type assignable, Type assigned) {
         return types.isSubtype(assignable, assigned);
     }
 
-    public boolean isReified(Symbol typeSymbol) {
+    public boolean reified(Symbol typeSymbol) {
         return typeSymbol.getAnnotation(Reified.class) != null;
     }
 
-    public boolean isRecord(JCTree.JCModifiers mods) {
-        return isRecord(mods.flags);
+    public boolean record(JCTree.JCModifiers mods) {
+        return record(mods.flags);
     }
 
-    public boolean isRecord(long flags) {
+    public boolean record(long flags) {
         return (flags & Flags.RECORD) != 0;
     }
 
-    public boolean isCompactConstructor(JCTree.JCMethodDecl constructor) {
+    public boolean compactConstructor(JCTree.JCMethodDecl constructor) {
         return (constructor.mods.flags & Flags.COMPACT_RECORD_CONSTRUCTOR) != 0;
     }
 
@@ -275,7 +275,7 @@ public class SimpleTypes {
     }
 
     private Type inferReifiedType(Symbol.TypeVariableSymbol typeVariable, Type parameterType, Type type) {
-        if (isNotWildCard(type)) {
+        if (notWildCard(type)) {
             return type;
         }
 
@@ -350,10 +350,10 @@ public class SimpleTypes {
     public boolean hasUncheckedAnnotation(JCTree.JCModifiers modifiers){
         return modifiers.getAnnotations()
                 .stream()
-                .anyMatch(this::isUncheckedAnnotation);
+                .anyMatch(this::uncheckedAnnotation);
     }
 
-    private boolean isUncheckedAnnotation(JCTree.JCAnnotation annotation) {
+    private boolean uncheckedAnnotation(JCTree.JCAnnotation annotation) {
         var type = TreeInfo.symbol(annotation.getAnnotationType()).asType();
         if(!types.isSameType(type, createTypeWithParameters(SuppressWarnings.class))){
             return false;
@@ -372,7 +372,7 @@ public class SimpleTypes {
 
         var annotationValueSymbol = TreeInfo.symbol(annotationValue);
         if(!(annotationValueSymbol instanceof Symbol.VarSymbol)){
-            System.err.printf("SimpleTypes#isUncheckedAnnotation: unexpectedly got symbol %s(report this on github)", (annotationValueSymbol == null ? "unknown" : annotation.getKind().name()));
+            System.err.printf("SimpleTypes#isUncheckedAnnotation: unexpectedly got symbol %s(report this on github)", annotationValueSymbol.getClass().getName());
             return false;
         }
 
