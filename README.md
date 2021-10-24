@@ -20,7 +20,7 @@ Add this dependency to your dependencies in the pom:
     <dependency>
         <groupId>com.github.auties00</groupId>
         <artifactId>reified</artifactId>
-        <version>1.13</version>
+        <version>1.14</version>
     </dependency>
 </dependencies>
 
