@@ -1,180 +1,113 @@
 package it.auties.reified.simplified;
 
-import com.sun.source.tree.Tree;
 import com.sun.tools.javac.code.*;
-import com.sun.tools.javac.comp.*;
+import com.sun.tools.javac.code.Symbol.TypeVariableSymbol;
+import com.sun.tools.javac.code.Type.ArrayType;
+import com.sun.tools.javac.code.Type.MethodType;
 import com.sun.tools.javac.tree.JCTree;
-import com.sun.tools.javac.tree.TreeInfo;
-import com.sun.tools.javac.util.Assert;
 import com.sun.tools.javac.util.List;
+import com.sun.tools.javac.util.ListBuffer;
 import it.auties.reified.annotation.Reified;
 import it.auties.reified.model.ReifiedCall;
-import it.auties.reified.util.StreamUtils;
-import lombok.AllArgsConstructor;
-import lombok.experimental.ExtensionMethod;
 
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
-import javax.lang.model.element.TypeElement;
-import javax.lang.model.type.TypeMirror;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.IntStream;
+import java.util.stream.StreamSupport;
 
 import static com.sun.tools.javac.code.TypeTag.TYPEVAR;
-import static com.sun.tools.javac.code.TypeTag.WILDCARD;
-import static com.sun.tools.javac.tree.JCTree.Tag.*;
+import static com.sun.tools.javac.tree.JCTree.Tag.TYPEAPPLY;
 
-@AllArgsConstructor
-@ExtensionMethod(StreamUtils.class)
-public class SimpleTypes {
-    private final ProcessingEnvironment environment;
-    private final Types types;
-    private final Attr attr;
-    private final Enter enter;
-    private final MemberEnter memberEnter;
-
-    public Type createTypeWithParameters(Class<?> clazz, Element parameter) {
-        return createTypeWithParameters(clazz, parameter.asType());
-    }
-
-    public Type createTypeWithParameters(Class<?> clazz, TypeMirror... parameter) {
+public record SimpleTypes(ProcessingEnvironment environment,
+                          Types types) {
+    public Type createTypeWithParameters(Element parameter) {
         var types = environment.getTypeUtils();
-        return (Type) types.getDeclaredType(toTypeElement(clazz), parameter);
+        var wildcard = types.getWildcardType(null, parameter.asType());
+        var type = environment.getElementUtils()
+                .getTypeElement(Class.class.getName());
+        return (Type) types.getDeclaredType(type, wildcard);
     }
 
-    public TypeElement toTypeElement(Class<?> clazz) {
-        var type = environment.getElementUtils().getTypeElement(clazz.getName());
-        return Assert.checkNonNull(type, "Reified Methods: Cannot compile as the type element associated with the class " + clazz.getName() + " doesn't exist!");
-    }
-
-    public void resolveEnv(Env<AttrContext> attrContextEnv) {
-        attr.attrib(attrContextEnv);
-    }
-
-    public void resolveClass(JCTree.JCClassDecl clazz) {
-        attr.attribClass(clazz.pos(), clazz.sym);
-    }
-
-    public List<Type> resolveTypes(List<? extends JCTree> expressions, JCTree.JCClassDecl clazz) {
-        var env = findClassEnv(clazz);
-        return expressions.stream()
-                .map(type -> attr.attribExpr(type, env))
-                .collect(List.collector());
-    }
-
-    public boolean valid(Type type) {
+    public boolean isValid(Type type) {
         return !type.isErroneous();
-    }
-
-    public Optional<Env<AttrContext>> findClassEnv(Tree tree) {
-        if (!(tree instanceof JCTree.JCClassDecl)) {
-            return Optional.empty();
-        }
-
-        return Optional.of(findClassEnv((JCTree.JCClassDecl) tree));
-    }
-
-    public Env<AttrContext> findClassEnv(JCTree.JCClassDecl enclosingClass) {
-        return enter.getClassEnv(enclosingClass.sym.asType().asElement());
-    }
-
-    public Env<AttrContext> findMethodEnv(JCTree.JCMethodDecl method, Env<AttrContext> env) {
-        if (method == null) {
-            return env;
-        }
-
-        return memberEnter.getMethodEnv(method, env);
     }
 
     public Type commonType(List<Type> input) {
         var type = types.lub(input);
-        if (type.getTag() == TypeTag.BOT || !valid(type)) {
+        if (type.getTag() == TypeTag.BOT || !isValid(type)) {
             return null;
         }
 
-        return type;
+        return types.erasure(type);
     }
 
     public Type erase(Symbol typeVariableSymbol) {
-        return typeVariableSymbol.erasure(types);
+        return erase(typeVariableSymbol.asType());
     }
 
-    public Type boxed(Type type) {
-        return types.boxedTypeOrType(type);
-    }
-
-    public boolean generic(Type type) {
-        return type.getTag() == TYPEVAR;
-    }
-
-    public boolean notWildCard(Type type) {
-        return type.getTag() != WILDCARD;
-    }
-
-    public Type resolveWildCard(Type type) {
-        if(type == null){
-            return null;
+    public Type erase(Type type){
+        if(type instanceof ArrayType arrayType){
+            type = arrayType.elemtype;
         }
 
-        if (notWildCard(type)) {
-            return type;
-        }
-
-        return ((Type.WildcardType) type).type;
+        var boxed = types.boxedTypeOrType(type);
+        var erased = types.erasure(type);
+        return erased != null && isValid(erased) ? boxed
+                : erased;
     }
 
-    public List<Type> eraseTypeVariableFromTypeParameters(Symbol.TypeVariableSymbol typeParameter, List<Symbol.TypeVariableSymbol> parameters, List<JCTree.JCExpression> arguments, JCTree.JCClassDecl enclosingClass) {
-        var env = findClassEnv(enclosingClass);
+    public List<Type> eraseTypeVariableFromTypeParameters(TypeVariableSymbol typeParameter, List<TypeVariableSymbol> parameters, List<JCTree.JCExpression> arguments) {
         return IntStream.range(0, parameters.size())
                 .limit(arguments.size())
                 .filter(index -> Objects.equals(parameters.get(index), typeParameter))
                 .mapToObj(arguments::get)
-                .map(arg -> inferReifiedType(arg, env))
-                .onlyPresent()
-                .map(this::parseArgument)
+                .map(arg -> erase(arg.type))
                 .collect(List.collector());
     }
 
-    public List<Type> eraseTypeVariableFromArguments(Symbol.TypeVariableSymbol typeParameter, List<Symbol.VarSymbol> parameters, List<Type> arguments, boolean varArgs) {
-        return IntStream.range(0, arguments.size())
-                .filter(index -> matchTypeVariableToParameter(typeParameter, parameters, index, varArgs))
-                .mapToObj(arguments::get)
-                .map(this::parseArgument)
-                .collect(List.collector());
-    }
 
-    private boolean matchTypeVariableToParameter(Symbol.TypeVariableSymbol typeParameter, List<Symbol.VarSymbol> parameters, int index, boolean varArgs) {
-        var param = getVarArgsParam(parameters, index, varArgs);
-        if (types.isArray(param)) {
-            var arrayType = (Type.ArrayType) param;
-            return typeParameter.equals(arrayType.getComponentType().asElement());
+    // <T> void <name>(Map<Map<String, T>, Map<String, T>> <name>)
+    // <name>(new HashMap<Map<String, String>, Map<String, Integer>>())
+    private Type matchArgumentsAndParameters(TypeVariableSymbol typeParameter, Iterator<TypeStructure> parametersStructures, Iterator<TypeStructure> argumentsStructures) {
+        var matches = new ListBuffer<Type>();
+        while (parametersStructures.hasNext() && argumentsStructures.hasNext()){
+            var parameter = parametersStructures.next();
+            var argument = argumentsStructures.next();
+            if(Objects.equals(typeParameter, parameter.type().asElement())){
+                matches.add(argument.type());
+                continue;
+            }
+
+            var inner = matchArgumentsAndParameters(typeParameter, parameter.types().iterator(), argument.types().iterator());
+            matches.add(inner);
         }
 
-        return typeParameter.equals(param.asElement());
+        return commonType(matches.toList());
     }
 
-    private Type getVarArgsParam(List<Symbol.VarSymbol> parameters, int index, boolean varArgs) {
-        if (!varArgs || index < parameters.size() - 1) {
-            return parameters.get(index).asType();
+    private TypeStructure createTypeStructure(Type type, int index){
+        var baseStructure = new TypeStructure(index, type, new ListBuffer<>());
+        if(!type.isParameterized()){
+            return baseStructure;
         }
 
-        return parameters.last().asType();
-    }
 
-    private Type parseArgument(Type type) {
-        if (types.isArray(type)) {
-            var arrayType = (Type.ArrayType) type;
-            return boxed(arrayType.getComponentType());
+        for(var parameterIndex = 0; parameterIndex < type.getTypeArguments().size(); parameterIndex++){
+            var parameterType = type.getTypeArguments().get(parameterIndex);
+            var innerTypes = createTypeStructure(parameterType, parameterIndex);
+            var innerStructure = new TypeStructure(parameterIndex, parameterType, ListBuffer.of(innerTypes));
+            baseStructure.types().add(innerStructure);
         }
 
-        return boxed(type);
+        return baseStructure;
     }
 
-    public Optional<Type> inferReifiedType(JCTree argument, Env<AttrContext> env) {
-        return Optional.ofNullable(attr.attribType(argument, env)).filter(this::valid);
+    private record TypeStructure(int index, Type type, ListBuffer<TypeStructure> types){
+
     }
 
     public List<JCTree.JCExpression> flattenGenericType(JCTree.JCExpression type) {
@@ -189,22 +122,24 @@ public class SimpleTypes {
                 .collect(List.collector());
     }
 
-    public List<Type> flattenGenericType(Type type) {
+    public Iterator<Type> flattenGenericType(Type type) {
         if (!type.isParameterized()) {
-            return List.of(type);
+            return List.of(type)
+                    .iterator();
         }
 
         return flattenGenericType(type.getTypeArguments());
     }
 
-    public List<Type> flattenGenericType(List<? extends Type> types) {
+    public Iterator<Type> flattenGenericType(List<? extends Type> types) {
         return types.stream()
                 .map(this::flattenGenericType)
-                .flatMap(Collection::stream)
-                .collect(List.collector());
+                .<Iterable<Type>>map(iterator -> () -> iterator)
+                .flatMap(iterator -> StreamSupport.stream(iterator.spliterator(), false))
+                .iterator();
     }
 
-    public Optional<Type> resolveImplicitType(Iterator<Type> invocationIterator, Iterator<Type> genericIterator, Symbol.TypeVariableSymbol typeVariable) {
+    public Optional<Type> resolveImplicitType(Iterator<Type> invocationIterator, Iterator<Type> genericIterator, TypeVariableSymbol typeVariable) {
         while (invocationIterator.hasNext() && genericIterator.hasNext()) {
             var invocation = invocationIterator.next();
             var generic = genericIterator.next();
@@ -218,164 +153,122 @@ public class SimpleTypes {
         return Optional.empty();
     }
 
-    public boolean assignable(Type assignable, Type assigned) {
+    public boolean isAssignable(Type assignable, Type assigned) {
         return types.isSubtype(assignable, assigned);
     }
 
-    public boolean reified(Symbol typeSymbol) {
+    public boolean isReified(Symbol typeSymbol) {
         return typeSymbol.getAnnotation(Reified.class) != null;
     }
 
-    public boolean record(JCTree.JCModifiers mods) {
-        return record(mods.flags);
+    public boolean isRecord(JCTree.JCModifiers mods) {
+        return isRecord(mods.flags);
     }
 
-    public boolean record(long flags) {
+    public boolean isRecord(long flags) {
         return (flags & Flags.RECORD) != 0;
     }
 
-    public boolean compactConstructor(JCTree.JCMethodDecl constructor) {
+    public boolean isCompactConstructor(JCTree.JCMethodDecl constructor) {
         return (constructor.mods.flags & Flags.COMPACT_RECORD_CONSTRUCTOR) != 0;
     }
 
-    public Type inferReifiedType(ReifiedCall call) {
-        switch (call.invocation().getTag()){
-            case APPLY:
-                var methodInvocation = (JCTree.JCMethodInvocation) call.invocation();
-                var invocationTypeArguments = methodInvocation.getTypeArguments();
-                if (invocationTypeArguments != null && !invocationTypeArguments.isEmpty()) {
-                    var deduced = eraseTypeVariableFromTypeParameters(call.typeVariable(), call.invoked().getTypeParameters(), invocationTypeArguments, call.enclosingClass());
-                    Assert.check(!deduced.isEmpty(), "Cannot resolve method type for explicit type variable");
-                    return resolveWildCard(deduced.head);
-                }
+    public Type infer(ReifiedCall call) {
+        if(call.invocation() instanceof JCTree.JCMethodInvocation methodInvocation) {
+            var invocationTypeArguments = methodInvocation.getTypeArguments();
+            if (invocationTypeArguments != null && !invocationTypeArguments.isEmpty()) {
+                var deduced = eraseTypeVariableFromTypeParameters(call.typeVariable(),
+                        call.invoked().getTypeParameters(), invocationTypeArguments);
+                return commonType(deduced);
+            }
 
-                var methodParameterType = inferReifiedType(methodInvocation, call);
-                var invokedReturnIterator = flattenGenericType(call.invoked().getReturnType()).iterator();
-                return inferReifiedType(call, invokedReturnIterator)
-                        .map(type -> inferReifiedType(call.typeVariable(), methodParameterType, type))
-                        .orElse(inferReifiedType(call.typeVariable(), methodParameterType));
-            case NEWCLASS:
-                var classInitialization = (JCTree.JCNewClass) call.invocation();
-                var invokedTypeArgs = call.invoked().enclClass().getTypeParameters();
-                var invocationTypeArgs = flattenGenericType(classInitialization.getIdentifier());
-                if (!invocationTypeArgs.isEmpty()) {
-                    var deduced = eraseTypeVariableFromTypeParameters(call.typeVariable(), invokedTypeArgs, invocationTypeArgs, call.enclosingClass());
-                    Assert.check(!deduced.isEmpty(), "Cannot resolve class type for explicit type variable");
-                    return resolveWildCard(deduced.head);
-                }
-
-                var classParameterType = inferReifiedType(classInitialization, call);
-                var initializedClassTypeIterator = flattenGenericType(call.invoked().enclClass().asType().getTypeArguments()).iterator();
-                return inferReifiedType(call, initializedClassTypeIterator)
-                        .map(type -> inferReifiedType(call.typeVariable(), classParameterType, type))
-                        .orElse(inferReifiedType(call.typeVariable(), classParameterType));
-            default:
-                throw new IllegalArgumentException("Cannot resolve type: expected APPLY or NEWCLASS, got " + call.invocation().getTag());
-        }
-    }
-
-    private Type inferReifiedType(Symbol.TypeVariableSymbol typeVariable, Type parameterType, Type type) {
-        if (notWildCard(type)) {
-            return type;
+            var methodParameterType = inferWithParameters(methodInvocation, call);
+            var methodReturnTypeFlat = flattenGenericType(call.invoked().getReturnType());
+            return inferWithReturnType(call, methodReturnTypeFlat)
+                    .filter(type -> type.getTag() != TYPEVAR)
+                    .orElseGet(() -> eraseWildCard(call.typeVariable(), methodParameterType));
         }
 
-        return inferReifiedType(typeVariable, parameterType);
-    }
+        if(call.invocation() instanceof JCTree.JCNewClass classInitialization) {
+            var invokedTypeArgs = call.invoked().enclClass().getTypeParameters();
+            var invocationTypeArgs = flattenGenericType(classInitialization.getIdentifier());
+            if (!invocationTypeArgs.isEmpty()) {
+                var deduced = eraseTypeVariableFromTypeParameters(call.typeVariable(),
+                        invokedTypeArgs, invocationTypeArgs);
+                return commonType(deduced);
+            }
 
-    private Type inferReifiedType(Symbol.TypeVariableSymbol typeVariable, Type parameterType) {
-        return Objects.requireNonNullElse(resolveWildCard(parameterType), erase(typeVariable));
-    }
-
-    private Type inferReifiedType(JCTree.JCPolyExpression invocation, ReifiedCall call) {
-        var invocationArgs = resolveTypes(findPolyExpressionArguments(invocation), call.enclosingClass());
-        var commonTypes = eraseTypeVariableFromArguments(call.typeVariable(), call.invoked().getParameters(), invocationArgs, call.invoked().isVarArgs());
-        return commonType(commonTypes);
-    }
-
-    private List<JCTree.JCExpression> findPolyExpressionArguments(JCTree.JCPolyExpression invocation) {
-        if (invocation.getTag() == APPLY) {
-            return ((JCTree.JCMethodInvocation) invocation).getArguments();
+            var classParameterType = inferWithParameters(classInitialization, call);
+            var initializedClassFlatType = flattenGenericType(call.invoked().enclClass().asType().getTypeArguments());
+            return inferWithReturnType(call, initializedClassFlatType)
+                    .filter(type -> type.getTag() != TYPEVAR)
+                    .orElseGet(() -> eraseWildCard(call.typeVariable(), classParameterType));
         }
 
-        if (invocation.getTag() == NEWCLASS) {
-            return ((JCTree.JCNewClass) invocation).getArguments();
+        throw new IllegalArgumentException("Cannot resolve type: expected APPLY or NEW_CLASS, got " + call.invocation().getTag());
+    }
+
+    private Type eraseWildCard(TypeVariableSymbol typeVariable, Type parameterType) {
+        return Objects.requireNonNullElse(erase(parameterType), erase(typeVariable));
+    }
+
+    private Type inferWithParameters(JCTree.JCPolyExpression invocation, ReifiedCall call) {
+        var invocationArgs = getArguments(invocation);
+        var parameters = call.invoked().getParameters();
+        var parametersStructures = IntStream.range(0, parameters.size())
+                .mapToObj(index -> createTypeStructure(parameters.get(index).asType(), index))
+                .iterator();
+        var argumentsStructures = IntStream.range(0, invocationArgs.size())
+                .mapToObj(index -> createTypeStructure(invocationArgs.get(index), index))
+                .iterator();
+        return matchArgumentsAndParameters(call.typeVariable(), parametersStructures, argumentsStructures);
+    }
+
+    private List<Type> getArguments(JCTree.JCPolyExpression invocation) {
+        if(invocation instanceof JCTree.JCMethodInvocation methodInvocation) {
+            return methodInvocation.getArguments()
+                    .stream()
+                    .map(arg -> arg.type)
+                    .collect(List.collector());
+        }
+
+        if(invocation instanceof JCTree.JCNewClass classInitialization) {
+            return classInitialization.getArguments()
+                    .stream()
+                    .map(arg -> arg.type)
+                    .collect(List.collector());
         }
 
         throw new IllegalArgumentException("Cannot find arguments of poly expression: expected APPLY or NEW_CLASS, got " + invocation.getTag());
     }
 
-    private Type inferReifiedType(JCTree.JCNewClass invocation, ReifiedCall call) {
-        var invocationArgs = resolveTypes(invocation.getArguments(), call.enclosingClass());
-        var commonTypes = eraseTypeVariableFromArguments(call.typeVariable(), call.invoked().getParameters(), invocationArgs, call.invoked().isVarArgs());
-        return commonType(commonTypes);
-    }
-
-    private Optional<Type> inferReifiedType(ReifiedCall call, Iterator<Type> flatReturnType) {
-        if(call.enclosingStatement() == null){
+    private Optional<Type> inferWithReturnType(ReifiedCall call, Iterator<Type> flatReturnType) {
+        if (call.enclosingStatement() == null) {
             return Optional.empty();
         }
 
-        var env = findClassEnv(call.enclosingClass());
-        switch (call.enclosingStatement().getTag()) {
-            case RETURN:
-                var methodReturnType = inferReifiedType(call.enclosingMethod().getReturnType(), env);
-                if (methodReturnType.isEmpty()) {
-                    return Optional.empty();
-                }
+        return switch (call.enclosingStatement().getTag()) {
+            case RETURN -> {
+                var methodReturnType = call.enclosingMethod().getReturnType();
+                var flatMethodReturn = flattenGenericType(methodReturnType.type);
+                yield resolveImplicitType(flatMethodReturn, flatReturnType, call.typeVariable());
+            }
 
-                var flatMethodReturn = flattenGenericType(methodReturnType.get()).iterator();
-                return resolveImplicitType(flatMethodReturn, flatReturnType, call.typeVariable());
-            case VARDEF:
+            case VARDEF -> {
                 var variable = (JCTree.JCVariableDecl) call.enclosingStatement();
-                if (variable.isImplicitlyTyped()) {
-                    return Optional.empty();
-                }
+                var flatVariableType = flattenGenericType(variable.type);
+                yield resolveImplicitType(flatVariableType, flatReturnType, call.typeVariable());
+            }
 
-                var variableType = inferReifiedType(variable.vartype, env);
-                if (variableType.isEmpty()) {
-                    return Optional.empty();
-                }
-
-                var flatVariableType = flattenGenericType(variableType.get()).iterator();
-                return resolveImplicitType(flatVariableType, flatReturnType, call.typeVariable());
-            default:
-                return Optional.empty();
-        }
+            default -> Optional.empty();
+        };
     }
 
-    public Type.ArrayType createArray(Type type){
-        return types.makeArrayType(type);
-    }
-
-    public boolean hasUncheckedAnnotation(JCTree.JCModifiers modifiers){
-        return modifiers.getAnnotations()
-                .stream()
-                .anyMatch(this::uncheckedAnnotation);
-    }
-
-    private boolean uncheckedAnnotation(JCTree.JCAnnotation annotation) {
-        var type = TreeInfo.symbol(annotation.getAnnotationType()).asType();
-        if(!types.isSameType(type, createTypeWithParameters(SuppressWarnings.class))){
-            return false;
+    public Optional<MethodType> asMethodType(Type type){
+        try {
+            return Optional.ofNullable(type.asMethodType());
+        }catch (AssertionError error){
+            return Optional.empty();
         }
-
-        var annotationValueAssignment = annotation.args.head;
-        if(annotationValueAssignment.getTag() != ASSIGN){
-            System.err.printf("SimpleTypes#isUncheckedAnnotation: unexpectedly got tag %s(report this on github)", annotationValueAssignment.getTag().name());
-            return false;
-        }
-
-        var annotationValue = ((JCTree.JCAssign) annotationValueAssignment).getExpression();
-        if (annotationValue.getTag() == LITERAL) {
-            return ((JCTree.JCLiteral) annotationValue).getValue().equals("unchecked");
-        }
-
-        var annotationValueSymbol = TreeInfo.symbol(annotationValue);
-        if(!(annotationValueSymbol instanceof Symbol.VarSymbol)){
-            System.err.printf("SimpleTypes#isUncheckedAnnotation: unexpectedly got symbol %s(report this on github)", annotationValueSymbol.getClass().getName());
-            return false;
-        }
-
-        return ((Symbol.VarSymbol) annotationValueSymbol).getConstantValue().equals("unchecked");
     }
 }

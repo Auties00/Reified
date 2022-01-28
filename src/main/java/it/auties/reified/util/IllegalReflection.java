@@ -1,9 +1,6 @@
 package it.auties.reified.util;
 
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.experimental.Accessors;
+import lombok.experimental.UtilityClass;
 import sun.misc.Unsafe;
 
 import java.io.OutputStream;
@@ -12,20 +9,17 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.NoSuchElementException;
 
-@AllArgsConstructor(access = AccessLevel.PRIVATE)
-@Accessors(fluent = true)
+@UtilityClass
 public class IllegalReflection {
-    @Getter
-    private static final IllegalReflection singleton = new IllegalReflection();
     private final Unsafe unsafe;
     private final long offset;
-    private IllegalReflection(){
-        this.unsafe = getUnsafe();
-        this.offset = findOffset();
-        openJavac();
+
+    static {
+        unsafe = getUnsafe();
+        offset = findOffset();
     }
 
-    private void openJavac(){
+    public void openJavac(){
         try {
             var jdkCompilerModule = findCompilerModule();
             var addOpensMethod = Module.class.getDeclaredMethod("implAddOpens", String.class, Module.class);

@@ -30,9 +30,6 @@ public class MethodInvocationScanner extends ReifiedScanner<ReifiedCall> {
     }
 
     public Optional<Symbol.MethodSymbol> resolveMethod(@NonNull JCTree.JCMethodInvocation invocation) {
-        var classEnv = simpleTypes().findClassEnv(enclosingClass());
-        var methodEnv = simpleTypes().findMethodEnv(enclosingMethod(), classEnv);
-        simpleTypes().resolveEnv(methodEnv);
         var symbol = TreeInfo.symbol(invocation.getMethodSelect());
         if (!(symbol instanceof Symbol.MethodSymbol)) {
             return Optional.empty();

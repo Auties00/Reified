@@ -9,20 +9,14 @@ import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.Name;
-import it.auties.reified.model.ReifiedArrayInitialization;
 import it.auties.reified.model.ReifiedDeclaration;
-import lombok.AllArgsConstructor;
 
 import javax.lang.model.element.Element;
-import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.NoSuchElementException;
 
-@AllArgsConstructor
-public class SimpleMaker {
-    private final TreeMaker maker;
-    private final SimpleTypes simpleTypes;
-
+public record SimpleMaker(TreeMaker maker,
+                          SimpleTypes simpleTypes) {
     public JCTree.JCExpression classLiteral(Type type) {
         return maker.ClassLiteral(type);
     }
@@ -33,116 +27,6 @@ public class SimpleMaker {
 
     private JCTree.JCIdent identity(Symbol symbol) {
         return maker.Ident(symbol);
-    }
-
-    public void processArrayInitialization(ReifiedArrayInitialization array) {
-        var expressions = array.enclosingExpressions().reverse();
-        if(expressions.head == null || expressions.head.getTag() != JCTree.Tag.NEWARRAY){
-            throw new IllegalArgumentException("Cannot process array init, corrupted expression stack: " + array);
-        }
-
-        castArrayToParameter(expressions);
-        var varType = simpleTypes.createArray(array.typeVariableSymbol().asType());
-        array.initialization().elemtype = type(simpleTypes.createTypeWithParameters(Object.class));
-        array.initialization().type = simpleTypes.createTypeWithParameters(Object.class);
-        if (!(array.enclosingStatement() instanceof JCTree.JCVariableDecl)) {
-            return;
-        }
-
-        changeEnclosingVariableArrayType(array, varType);
-    }
-
-    private void changeEnclosingVariableArrayType(ReifiedArrayInitialization array, Type.ArrayType varType) {
-        var enclosingVariable = (JCTree.JCVariableDecl) array.enclosingStatement();
-        if (!TreeInfo.skipParens(enclosingVariable.init).equals(array.initialization())) {
-            return;
-        }
-
-        enclosingVariable.init = maker.TypeCast(maker.TypeArray(type(array.typeVariableSymbol().asType())), array.initialization());
-        enclosingVariable.vartype = type(varType);
-        enclosingVariable.type = varType;
-        enclosingVariable.sym.type = varType;
-        enclosingVariable.sym.flags_field = 0;
-        enclosingVariable.sym.adr = 0;
-        suppressUncheckedCast(enclosingVariable);
-    }
-
-    // There is room for improvement in this method.
-    // Performance shouldn't be that bad considering that the list isn't supposed to be massive,
-    // though a better approach would be better.
-    private void castArrayToParameter(List<JCTree.JCExpression> expressions) {
-        expressions.forEach(expression -> {
-            var headIndex = findHeadArgument(expressions, expression);
-            if (headIndex == -1) {
-                return;
-            }
-
-            castArrayToParameter(expressions, expression, headIndex);
-        });
-    }
-
-    private int findHeadArgument(List<JCTree.JCExpression> expressions, JCTree.JCExpression expression) {
-        switch (expression.getTag()){
-            case NEWCLASS:
-                return findHeadArgument(expressions, ((JCTree.JCNewClass) expression).getArguments());
-            case APPLY:
-                return findHeadArgument(expressions, ((JCTree.JCMethodInvocation) expression).getArguments());
-            default:
-                return -1;
-        }
-    }
-
-    private int findHeadArgument(List<JCTree.JCExpression> expressions, List<JCTree.JCExpression> arguments) {
-        for(var x = 0; x < arguments.size(); x++){
-            var argument = TreeInfo.skipParens(arguments.get(x));
-            if(argument.equals(expressions.head)){
-                return x;
-            }
-        }
-
-        return -1;
-    }
-
-    private void castArrayToParameter(List<JCTree.JCExpression> expressions, JCTree.JCExpression expression, int headIndex) {
-        switch (expression.getTag()){
-            case NEWCLASS:
-                castArrayToClassParameter(expressions, (JCTree.JCNewClass) expression, headIndex);
-                break;
-            case APPLY:
-                castArrayToMethodParameter(expressions, (JCTree.JCMethodInvocation) expression, headIndex);
-                break;
-            default:
-                throw new IllegalArgumentException("Unexpected tree: " + expression);
-        }
-    }
-
-    private void castArrayToClassParameter(List<JCTree.JCExpression> expressions, JCTree.JCNewClass candidate, int parameterIndex) {
-        var invocationArguments = new ArrayList<>(candidate.getArguments());
-        invocationArguments.remove(parameterIndex);
-        invocationArguments.add(parameterIndex, maker.TypeCast(candidate.constructor.asType().getParameterTypes().get(parameterIndex), expressions.head));
-        candidate.args = List.from(invocationArguments);
-    }
-
-    private void castArrayToMethodParameter(List<JCTree.JCExpression> expressions, JCTree.JCMethodInvocation candidate, int parameterIndex) {
-        var invoked = TreeInfo.symbol(candidate.getMethodSelect());
-        if(!(invoked instanceof Symbol.MethodSymbol)){
-            return;
-        }
-
-        var invocationArguments = new ArrayList<>(candidate.getArguments());
-        invocationArguments.remove(parameterIndex);
-        invocationArguments.add(parameterIndex, maker.TypeCast(invoked.asType().getParameterTypes().get(parameterIndex), expressions.head));
-        candidate.args = List.from(invocationArguments);
-    }
-
-    private void suppressUncheckedCast(JCTree.JCVariableDecl enclosing) {
-        if (simpleTypes.hasUncheckedAnnotation(enclosing.getModifiers())) {
-            return;
-        }
-
-        var oldAnnotations = new ArrayList<>(enclosing.mods.annotations);
-        oldAnnotations.add(maker.Annotation(type(simpleTypes.createTypeWithParameters(SuppressWarnings.class)), List.of(maker.Literal("unchecked"))));
-        enclosing.mods.annotations = List.from(oldAnnotations);
     }
 
     public void processMembers(ReifiedDeclaration declaration) {
@@ -164,11 +48,11 @@ public class SimpleMaker {
     private void addParameterAndAssign(ReifiedDeclaration declaration, JCTree.JCMethodDecl constructor, JCTree.JCVariableDecl localVariable) {
         var typeParameter = declaration.typeParameter();
         var parameter = addParameter(typeParameter, constructor);
-        if (simpleTypes.record(declaration.enclosingClass().getModifiers())) {
+        if (simpleTypes.isRecord(declaration.enclosingClass().getModifiers())) {
             removeRecordSuperCall(constructor);
         }
 
-        if (simpleTypes.compactConstructor(constructor)) {
+        if (simpleTypes.isCompactConstructor(constructor)) {
             return;
         }
 
@@ -225,6 +109,13 @@ public class SimpleMaker {
 
         var typeLiteral = createGenericMethodLiteral(constructor, typeParameter.getSimpleName());
         thisCall.args = thisCall.args.prepend(typeLiteral);
+
+        var symbol = (Symbol.MethodSymbol) TreeInfo.symbolFor(thisCall);
+        symbol.params.prepend((Symbol.VarSymbol) typeLiteral.sym);
+
+        var type = symbol.asType().asMethodType();
+        type.argtypes.prepend(typeLiteral.type);
+
         return newStats;
     }
 
@@ -234,7 +125,7 @@ public class SimpleMaker {
 
         var localVariableModifiers = maker.Modifiers(rawLocalVariableModifiers);
 
-        var rawLocalVariableType = simpleTypes.createTypeWithParameters(Class.class, typeParameter);
+        var rawLocalVariableType = simpleTypes.createTypeWithParameters(typeParameter);
         var localVariableType = type(rawLocalVariableType);
 
         var localVariable = maker.at(enclosingClass.pos)
@@ -246,7 +137,7 @@ public class SimpleMaker {
     }
 
     private long createVariableModifiers(JCTree.JCClassDecl enclosingClass) {
-        if (simpleTypes.record(enclosingClass.getModifiers())) {
+        if (simpleTypes.isRecord(enclosingClass.getModifiers())) {
             return Flags.PRIVATE | Flags.FINAL | Flags.COMPOUND | Flags.RECORD;
         }
 
@@ -254,7 +145,7 @@ public class SimpleMaker {
     }
 
     private JCTree.JCVariableDecl addParameter(Symbol.TypeVariableSymbol typeParameter, JCTree.JCMethodDecl method) {
-        var paramType = simpleTypes.createTypeWithParameters(Class.class, typeParameter);
+        var paramType = simpleTypes.createTypeWithParameters(typeParameter);
         var param = maker.at(method.pos).Param(typeParameter.getSimpleName(), paramType, method.sym);
         param.sym.adr = 0;
         method.params = method.params.prepend(param);
@@ -271,6 +162,13 @@ public class SimpleMaker {
     public void addSuperParam(JCTree.JCExpression superType, JCTree.JCExpressionStatement firstStatement) {
         var superCall = (JCTree.JCMethodInvocation) firstStatement.getExpression();
         superCall.args = superCall.args.prepend(superType);
+
+        var superTypeSymbol = TreeInfo.symbol(superType);
+        var symbol = (Symbol.MethodSymbol) TreeInfo.symbolFor(superCall);
+        symbol.params = symbol.params.prepend((Symbol.VarSymbol) superTypeSymbol);
+
+        var type = symbol.asType().asMethodType();
+        type.argtypes = type.argtypes.prepend(superTypeSymbol.type);
     }
 
     public JCTree.JCIdent createGenericMethodLiteral(JCTree.JCMethodDecl method, Name name) {
