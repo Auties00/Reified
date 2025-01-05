@@ -5,22 +5,20 @@ import com.sun.source.util.TreeScanner;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
 import it.auties.reified.simplified.SimpleTypes;
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import static java.util.Collections.unmodifiableList;
 
-@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ExtendedClassesScanner extends TreeScanner<Void, Void> {
     private final JCTree.JCClassDecl superClass;
     private final SimpleTypes simpleTypes;
-    private List<JCTree.JCClassDecl> results;
-
+    private final List<JCTree.JCClassDecl> results;
     public ExtendedClassesScanner(JCTree.JCClassDecl superClass, SimpleTypes simpleTypes) {
-        this(superClass, simpleTypes, new ArrayList<>());
+        this.superClass = superClass;
+        this.simpleTypes = simpleTypes;
+        this.results = new ArrayList<>();
         simpleTypes.resolveClass(superClass);
     }
 

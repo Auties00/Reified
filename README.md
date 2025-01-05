@@ -14,13 +14,12 @@ the same process to said parameters to determine the first.
 ### How to install
 
 #### Maven
-Add this dependency to your dependencies in the pom:
 ```xml
 <dependencies>
     <dependency>
         <groupId>com.github.auties00</groupId>
         <artifactId>reified</artifactId>
-        <version>1.15</version>
+        <version>2.0</version>
     </dependency>
 </dependencies>
 
@@ -31,13 +30,11 @@ Add this dependency to your dependencies in the pom:
             <artifactId>maven-compiler-plugin</artifactId>
             <version>3.8.1</version>
             <configuration>
-                <source>17</source>
-                <target>17</target>
                 <annotationProcessorPaths>
                     <path>
                         <groupId>com.github.auties00</groupId>
                         <artifactId>reified</artifactId>
-                        <version>1.15</version>
+                        <version>2.0</version>
                     </path>
                 </annotationProcessorPaths>
             </configuration>
@@ -47,10 +44,9 @@ Add this dependency to your dependencies in the pom:
 ```
 
 #### Gradle
-Add this dependency to your build.gradle:
 ```groovy
-implementation 'com.github.auties00:reified:1.15'
-annotationProcessor 'com.github.auties00:reified:1.15'
+implementation 'com.github.auties00:reified:2.0'
+annotationProcessor 'com.github.auties00:reified:2.0'
 ```
 
 #### Plugins
@@ -68,7 +64,11 @@ class JsonUtils {
     private static final ObjectMapper JACKSON = new ObjectMapper();
 
     public static <@Reified T> T fromJson(String json){
-        return JACKSON.readValue(json, T);
+        try {
+            return JACKSON.readValue(json, clazz);
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
     }
 }
 
@@ -80,17 +80,25 @@ record ExampleObject(String name) {
 ```
 
 Without reified:
+
 ```java
+import java.io.IOException;
+import java.io.UncheckedIOException;
+
 class JsonUtils {
     private static final ObjectMapper JACKSON = new ObjectMapper();
 
-    public static <T> T fromJson(String json, Class<T> clazz){
-        return JACKSON.readValue(json, clazz);
+    public static <T> T fromJson(String json, Class<T> clazz) {
+        try {
+            return JACKSON.readValue(json, clazz);
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
     }
 }
 
 record ExampleObject(String name) {
-    public static ExampleObject fromJson(String json){
+    public static ExampleObject fromJson(String json) {
         return JsonUtils.fromJson(json, ExampleObject.class);
     }
 }

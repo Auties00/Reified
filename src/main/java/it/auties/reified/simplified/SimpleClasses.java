@@ -6,20 +6,17 @@ import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.util.List;
 import it.auties.reified.model.ReifiedDeclaration;
-import it.auties.reified.util.StreamUtils;
-import lombok.AllArgsConstructor;
-import lombok.NonNull;
-import lombok.experimental.ExtensionMethod;
 
 import javax.lang.model.element.Modifier;
 import java.util.Optional;
 
 import static com.sun.tools.javac.code.Flags.GENERATEDCONSTR;
 
-@AllArgsConstructor
-@ExtensionMethod(StreamUtils.class)
 public class SimpleClasses {
     private final SimpleTypes simpleTypes;
+    public SimpleClasses(SimpleTypes simpleTypes) {
+        this.simpleTypes = simpleTypes;
+    }
 
     public ReifiedDeclaration.AccessModifier findRealAccess(JCTree.JCClassDecl clazz, JCTree.JCMethodDecl method) {
         if (method == null) {
@@ -78,7 +75,7 @@ public class SimpleClasses {
         return constructor;
     }
 
-    public Optional<Symbol.MethodSymbol> findAndResolveConstructor(@NonNull JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, @NonNull JCTree.JCNewClass invocation) {
+    public Optional<Symbol.MethodSymbol> findAndResolveConstructor(JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCNewClass invocation) {
         var classEnv = simpleTypes.findClassEnv(enclosingClass);
         var methodEnv = simpleTypes.findMethodEnv(enclosingMethod, classEnv);
         simpleTypes.resolveEnv(methodEnv);
@@ -91,5 +88,18 @@ public class SimpleClasses {
 
     public boolean assignable(Type classType, Type assign) {
         return simpleTypes.assignable(classType, assign);
+    }
+
+    public Optional<Symbol.MethodSymbol> resolveMethod(JCTree.JCClassDecl enclosingClass, JCTree.JCMethodDecl enclosingMethod, JCTree.JCMethodInvocation invocation) {
+        var classEnv = simpleTypes.findClassEnv(enclosingClass);
+        var methodEnv = simpleTypes.findMethodEnv(enclosingMethod, classEnv);
+        simpleTypes.resolveEnv(methodEnv);
+        var symbol = TreeInfo.symbol(invocation.getMethodSelect());
+        if (!(symbol instanceof Symbol.MethodSymbol)) {
+            return Optional.empty();
+        }
+
+        var method = (Symbol.MethodSymbol) symbol;
+        return Optional.of(method);
     }
 }

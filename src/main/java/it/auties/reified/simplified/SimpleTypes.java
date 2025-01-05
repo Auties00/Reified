@@ -9,9 +9,6 @@ import com.sun.tools.javac.util.Assert;
 import com.sun.tools.javac.util.List;
 import it.auties.reified.annotation.Reified;
 import it.auties.reified.model.ReifiedCall;
-import it.auties.reified.util.StreamUtils;
-import lombok.AllArgsConstructor;
-import lombok.experimental.ExtensionMethod;
 
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
@@ -27,14 +24,20 @@ import static com.sun.tools.javac.code.TypeTag.TYPEVAR;
 import static com.sun.tools.javac.code.TypeTag.WILDCARD;
 import static com.sun.tools.javac.tree.JCTree.Tag.*;
 
-@AllArgsConstructor
-@ExtensionMethod(StreamUtils.class)
 public class SimpleTypes {
     private final ProcessingEnvironment environment;
     private final Types types;
     private final Attr attr;
     private final Enter enter;
     private final MemberEnter memberEnter;
+
+    public SimpleTypes(ProcessingEnvironment environment, Types types, Attr attr, Enter enter, MemberEnter memberEnter) {
+        this.environment = environment;
+        this.types = types;
+        this.attr = attr;
+        this.enter = enter;
+        this.memberEnter = memberEnter;
+    }
 
     public Type createTypeWithParameters(Class<?> clazz, Element parameter) {
         return createTypeWithParameters(clazz, parameter.asType());
@@ -133,7 +136,7 @@ public class SimpleTypes {
                 .filter(index -> Objects.equals(parameters.get(index), typeParameter))
                 .mapToObj(arguments::get)
                 .map(arg -> inferReifiedType(arg, env))
-                .onlyPresent()
+                .flatMap(Optional::stream)
                 .map(this::parseArgument)
                 .collect(List.collector());
     }

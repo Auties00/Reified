@@ -13,34 +13,32 @@ import it.auties.reified.model.ReifiedCall;
 import it.auties.reified.model.ReifiedDeclaration;
 import it.auties.reified.simplified.SimpleClasses;
 import it.auties.reified.simplified.SimpleTypes;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.RequiredArgsConstructor;
-import lombok.experimental.Accessors;
 
 import java.util.HashSet;
 import java.util.Set;
 
-@EqualsAndHashCode(callSuper = true)
-@RequiredArgsConstructor
-@Data
-@Accessors(fluent = true)
 public abstract class ReifiedScanner<T> extends TreeScanner<Void, Void> {
-    private final ReifiedDeclaration parameter;
-    private final SimpleClasses simpleClasses;
-    private final SimpleTypes simpleTypes;
+    protected final ReifiedDeclaration parameter;
+    protected final SimpleClasses simpleClasses;
+    protected final SimpleTypes simpleTypes;
 
-    private Set<T> results;
-    private JCTree.JCClassDecl enclosingClass;
-    private JCTree.JCMethodDecl enclosingMethod;
-    private JCTree.JCStatement enclosingStatement;
-    private ListBuffer<JCTree.JCExpression> enclosingExpressions;
+    protected Set<T> results;
+    protected JCTree.JCClassDecl enclosingClass;
+    protected JCTree.JCMethodDecl enclosingMethod;
+    protected JCTree.JCStatement enclosingStatement;
+    protected ListBuffer<JCTree.JCExpression> enclosingExpressions;
+
+    protected ReifiedScanner(ReifiedDeclaration parameter, SimpleClasses simpleClasses, SimpleTypes simpleTypes) {
+        this.parameter = parameter;
+        this.simpleClasses = simpleClasses;
+        this.simpleTypes = simpleTypes;
+    }
 
     @Override
     public Void scan(Tree tree, Void unused) {
         if (tree instanceof JCTree.JCStatement) {
             enclosingExpressions.clear();
-            enclosingStatement((JCTree.JCStatement) tree);
+            this.enclosingStatement = (JCTree.JCStatement) tree;
         }else if(tree instanceof JCTree.JCExpression){
             enclosingExpressions.add((JCTree.JCExpression) tree);
         }
@@ -50,19 +48,19 @@ public abstract class ReifiedScanner<T> extends TreeScanner<Void, Void> {
 
     @Override
     public Void visitClass(ClassTree node, Void unused) {
-        enclosingClass((JCTree.JCClassDecl) node);
+        this.enclosingClass = (JCTree.JCClassDecl) node;
         return super.visitClass(node, unused);
     }
 
     @Override
     public Void visitMethod(MethodTree node, Void unused) {
         Assert.checkNonNull(enclosingClass, "Cannot visit method outside of a class definition");
-        enclosingMethod((JCTree.JCMethodDecl) node);
+        this.enclosingMethod = (JCTree.JCMethodDecl) node;
         return super.visitMethod(node, unused);
     }
 
     protected ReifiedCall buildCall(JCTree.JCPolyExpression tree, Symbol.MethodSymbol invoked) {
-        return new ReifiedCall(parameter().typeParameter(), tree, invoked, enclosingClass, enclosingMethod, enclosingStatement);
+        return new ReifiedCall(parameter.typeParameter(), tree, invoked, enclosingClass, enclosingMethod, enclosingStatement);
     }
 
     protected ReifiedArrayInitialization buildArrayInit(JCTree.JCNewArray tree, Symbol.TypeVariableSymbol typeVariableSymbol) {

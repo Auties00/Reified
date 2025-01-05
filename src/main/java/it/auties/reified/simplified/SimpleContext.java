@@ -3,17 +3,13 @@ package it.auties.reified.simplified;
 import com.sun.tools.javac.processing.JavacProcessingEnvironment;
 import com.sun.tools.javac.util.Context;
 import it.auties.reified.util.IllegalReflection;
-import lombok.experimental.UtilityClass;
 
 import javax.annotation.processing.ProcessingEnvironment;
 import java.lang.reflect.Proxy;
 import java.util.Optional;
 
-@UtilityClass
 public class SimpleContext {
-    private final IllegalReflection REFLECTION = IllegalReflection.singleton();
-
-    public Context resolveContext(ProcessingEnvironment environment) {
+    public static Context resolveContext(ProcessingEnvironment environment) {
         var envClass = environment.getClass();
         if (envClass.getName().equals("com.sun.tools.javac.processing.JavacProcessingEnvironment")) {
             return resolveJavacContext(environment, envClass);
@@ -26,15 +22,15 @@ public class SimpleContext {
         return resolveGradleEnvironment(environment);
     }
 
-    private Context resolveJavacContext(ProcessingEnvironment environment, Class<? extends ProcessingEnvironment> envClass) {
+    private static Context resolveJavacContext(ProcessingEnvironment environment, Class<? extends ProcessingEnvironment> envClass) {
         try {
-            return (Context) REFLECTION.open(envClass.getDeclaredMethod("getContext")).invoke(environment);
+            return (Context) IllegalReflection.open(envClass.getDeclaredMethod("getContext")).invoke(environment);
         }catch (Throwable exception){
             throw new UnsupportedOperationException("Cannot resolve javac context", exception);
         }
     }
 
-    private Context resolveIntelliJContext(ProcessingEnvironment environment) {
+    private static Context resolveIntelliJContext(ProcessingEnvironment environment) {
         try {
             var getContext = JavacProcessingEnvironment.class.getMethod("getContext");
             return (Context) Proxy.getInvocationHandler(environment)
@@ -44,19 +40,20 @@ public class SimpleContext {
         }
     }
 
-    private Context resolveGradleEnvironment(ProcessingEnvironment environment) {
+    @SuppressWarnings("resource")
+    private static Context resolveGradleEnvironment(ProcessingEnvironment environment) {
         return resolveFieldRecursively(environment.getClass(), "delegate", environment)
                 .orElseThrow(() -> new UnsupportedOperationException("Unsupported environment!"))
                 .getContext();
     }
 
-    private Optional<JavacProcessingEnvironment> resolveFieldRecursively(Class<?> clazz, String fieldName, Object handler) {
+    private static Optional<JavacProcessingEnvironment> resolveFieldRecursively(Class<?> clazz, String fieldName, Object handler) {
         if (clazz == null) {
             return Optional.empty();
         }
 
         try {
-            return Optional.of((JavacProcessingEnvironment) REFLECTION.open(clazz.getDeclaredField(fieldName)).get(handler));
+            return Optional.of((JavacProcessingEnvironment) IllegalReflection.open(clazz.getDeclaredField(fieldName)).get(handler));
         } catch (NoSuchFieldException ignored) {
             return resolveFieldRecursively(clazz.getSuperclass(), fieldName, handler);
         } catch (IllegalAccessException exception) {

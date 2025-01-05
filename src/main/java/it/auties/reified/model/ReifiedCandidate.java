@@ -2,36 +2,57 @@ package it.auties.reified.model;
 
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.tree.JCTree;
-import lombok.NonNull;
-import lombok.ToString;
-import lombok.Value;
-import lombok.experimental.Accessors;
 
 import java.util.Objects;
 
-@Value
-@Accessors(fluent = true)
-@ToString
-public class ReifiedCandidate {
-    @NonNull Symbol.TypeVariableSymbol typeVariable;
-    @NonNull JCTree.JCClassDecl enclosingClass;
-    JCTree.JCMethodDecl enclosingMethod;
+public final class ReifiedCandidate {
+    private final Symbol.TypeVariableSymbol typeVariable;
+    private final JCTree.JCClassDecl enclosingClass;
+    private final JCTree.JCMethodDecl enclosingMethod;
+
+    public ReifiedCandidate(
+            Symbol.TypeVariableSymbol typeVariable,
+            JCTree.JCClassDecl enclosingClass,
+            JCTree.JCMethodDecl enclosingMethod
+    ) {
+        this.typeVariable = typeVariable;
+        this.enclosingClass = enclosingClass;
+        this.enclosingMethod = enclosingMethod;
+    }
 
     public boolean hasClass() {
         return Objects.isNull(enclosingMethod());
     }
 
     @Override
-    public boolean equals(Object other) {
-        if (this == other) {
-            return true;
-        }
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        ReifiedCandidate that = (ReifiedCandidate) o;
+        return Objects.equals(typeVariable, that.typeVariable) && Objects.equals(enclosingClass, that.enclosingClass) && Objects.equals(enclosingMethod, that.enclosingMethod);
+    }
 
-        if (!(other instanceof ReifiedCandidate)) {
-            return false;
-        }
+    public Symbol.TypeVariableSymbol typeVariable() {
+        return typeVariable;
+    }
 
-        var otherCandidate = (ReifiedCandidate) other;
-        return typeVariable.equals(otherCandidate.typeVariable);
+    public JCTree.JCClassDecl enclosingClass() {
+        return enclosingClass;
+    }
+
+    public JCTree.JCMethodDecl enclosingMethod() {
+        return enclosingMethod;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(typeVariable, enclosingClass, enclosingMethod);
+    }
+
+    @Override
+    public String toString() {
+        return "ReifiedCandidate[" +
+                "typeVariable=" + typeVariable + ", " +
+                "enclosingClass=" + enclosingClass + ", " +
+                "enclosingMethod=" + enclosingMethod + ']';
     }
 }

@@ -24,11 +24,11 @@ public class ArrayInitializationScanner extends ReifiedScanner<ReifiedArrayIniti
     public Void visitNewArray(NewArrayTree node, Void unused) {
         var rawTree = (JCTree.JCNewArray) node;
         var type = TreeInfo.symbol(rawTree.elemtype);
-        if(type == null || !simpleTypes().reified(type)){
+        if(type == null || !simpleTypes.reified(type)){
             return super.visitNewArray(node, unused);
         }
 
-        results().add(buildArrayInit(rawTree, (Symbol.TypeVariableSymbol) type));
+        results.add(buildArrayInit(rawTree, (Symbol.TypeVariableSymbol) type));
         return super.visitNewArray(node, unused);
     }
 }

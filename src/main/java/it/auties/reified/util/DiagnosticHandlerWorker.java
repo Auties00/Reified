@@ -3,10 +3,7 @@ package it.auties.reified.util;
 import com.sun.tools.javac.comp.Attr;
 import com.sun.tools.javac.util.JCDiagnostic;
 import com.sun.tools.javac.util.Log;
-import lombok.AllArgsConstructor;
-import lombok.EqualsAndHashCode;
-import lombok.Value;
-import lombok.experimental.Accessors;
+import com.sun.tools.javac.util.Log.DiagnosticHandler;
 
 import java.lang.reflect.Field;
 import java.util.LinkedList;
@@ -14,59 +11,61 @@ import java.util.Queue;
 import java.util.Set;
 
 public class DiagnosticHandlerWorker {
-    private static final IllegalReflection REFLECTION = IllegalReflection.singleton();
-    private static final Set<String> DISCARDED_ERROR_CODES = Set.of("compiler.err.generic.array.creation");
-    private static final String ATTR_LOG_FIELD = "log";
-    private static final String LOG_HANDLER_FIELD = "diagnosticHandler";
+    private static final Set<String> DISCARDED_ERROR_CODES = Set.of(
+            "compiler.err.generic.array.creation",
+            "compiler.err.cant.resolve"
+    );
 
-    private final CachedDiagnosticHandler cachedDiagnosticHandler;
+    private final CachedDiagnosticHandler handler;
     private final Log javacLogger;
     private final Field javacDiagnosticHandlerField;
-    private final Log.DiagnosticHandler javacDiagnosticHandler;
+    private final DiagnosticHandler javacDiagnosticHandler;
 
     public DiagnosticHandlerWorker(Attr attr){
         try {
-            this.cachedDiagnosticHandler = new CachedDiagnosticHandler();
-            var loggerField = attr.getClass().getDeclaredField(ATTR_LOG_FIELD);
-            this.javacLogger = (Log) REFLECTION.open(loggerField).get(attr);
-            this.javacDiagnosticHandlerField = javacLogger.getClass().getDeclaredField(LOG_HANDLER_FIELD);
-            this.javacDiagnosticHandler = (Log.DiagnosticHandler) REFLECTION.open(javacDiagnosticHandlerField).get(javacLogger);
-        }catch (Throwable throwable){
-            throw new RuntimeException("Cannot create DiagnosticHandlerWorker", throwable);
+            this.handler = new CachedDiagnosticHandler();
+            var loggerField = attr.getClass().getDeclaredField("log");
+            this.javacLogger = (Log) IllegalReflection.open(loggerField)
+                    .get(attr);
+            this.javacDiagnosticHandlerField = javacLogger.getClass()
+                    .getDeclaredField("diagnosticHandler");
+            this.javacDiagnosticHandler = (DiagnosticHandler) IllegalReflection.open(javacDiagnosticHandlerField)
+                    .get(javacLogger);
+        }catch (ReflectiveOperationException exception) {
+            throw new RuntimeException("Cannot access diagnostic handler", exception);
         }
     }
 
     public void useCachedHandler(){
-      try {
-          REFLECTION.open(javacDiagnosticHandlerField).set(javacLogger, cachedDiagnosticHandler);
-      }catch (Throwable throwable){
-          throw new RuntimeException("Cannot switch to cached diagnostic handler", throwable);
-      }
+        try {
+            IllegalReflection.open(javacDiagnosticHandlerField)
+                    .set(javacLogger, handler);
+        }catch (Throwable throwable){
+            throw new RuntimeException("Cannot switch to cached diagnostic handler", throwable);
+        }
     }
 
     public void useJavacHandler(){
         try {
-            REFLECTION.open(javacDiagnosticHandlerField).set(javacLogger, javacDiagnosticHandler);
+            IllegalReflection.open(javacDiagnosticHandlerField)
+                    .set(javacLogger, javacDiagnosticHandler);
         }catch (Throwable throwable){
             throw new RuntimeException("Cannot switch to cached diagnostic handler", throwable);
         }
     }
 
     public void reportErrors(){
-        cachedDiagnosticHandler.cachedErrors()
+        handler.cachedErrors
                 .stream()
-                .filter(diagnostic -> !DISCARDED_ERROR_CODES.contains(diagnostic.getCode()))
+                .filter(diagnostic -> DISCARDED_ERROR_CODES.stream()
+                        .noneMatch(code -> diagnostic.getCode().contains(code)))
                 .forEach(javacDiagnosticHandler::report);
     }
 
-    @AllArgsConstructor
-    @Value
-    @Accessors(fluent = true)
-    @EqualsAndHashCode(callSuper = true)
-    public static class CachedDiagnosticHandler extends Log.DiagnosticHandler{
+    public static class CachedDiagnosticHandler extends DiagnosticHandler {
         Queue<JCDiagnostic> cachedErrors;
         public CachedDiagnosticHandler(){
-            this(new LinkedList<>());
+            this.cachedErrors = new LinkedList<>();
         }
 
         @Override

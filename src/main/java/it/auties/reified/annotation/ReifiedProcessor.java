@@ -1,5 +1,6 @@
 package it.auties.reified.annotation;
 
+import com.google.auto.service.AutoService;
 import com.sun.source.util.Trees;
 import com.sun.tools.javac.api.JavacTrees;
 import com.sun.tools.javac.code.Symbol;
@@ -23,9 +24,7 @@ import it.auties.reified.simplified.SimpleContext;
 import it.auties.reified.simplified.SimpleMaker;
 import it.auties.reified.simplified.SimpleTypes;
 import it.auties.reified.util.DiagnosticHandlerWorker;
-import it.auties.reified.util.StreamUtils;
-import lombok.SneakyThrows;
-import lombok.experimental.ExtensionMethod;
+import it.auties.reified.util.IllegalReflection;
 
 import javax.annotation.processing.*;
 import javax.lang.model.SourceVersion;
@@ -33,6 +32,7 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
 import java.util.Collection;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 import static java.lang.Boolean.parseBoolean;
@@ -40,8 +40,12 @@ import static java.lang.Boolean.parseBoolean;
 @SupportedAnnotationTypes(Reified.PATH)
 @SupportedSourceVersion(SourceVersion.RELEASE_11)
 @SupportedOptions("reified.debug")
-@ExtensionMethod(StreamUtils.class)
+@AutoService(Processor.class)
 public class ReifiedProcessor extends AbstractProcessor {
+    static {
+        IllegalReflection.openJavac();
+    }
+
     private SimpleTypes simpleTypes;
     private SimpleClasses simpleClasses;
     private SimpleMaker simpleMaker;
@@ -59,7 +63,6 @@ public class ReifiedProcessor extends AbstractProcessor {
             processing();
             return true;
         } catch (Throwable ex) {
-            ex.printStackTrace();
             throw new RuntimeException("An exception occurred while compiling using reified", ex);
         }
     }
@@ -120,13 +123,13 @@ public class ReifiedProcessor extends AbstractProcessor {
     }
 
     private ReifiedDeclaration parseCandidate(ReifiedCandidate candidate) {
-        return ReifiedDeclaration.builder()
-                .typeParameter(candidate.typeVariable())
-                .enclosingClass(candidate.enclosingClass())
-                .methods(findMembers(candidate))
-                .isClass(candidate.hasClass())
-                .modifier(simpleClasses.findRealAccess(candidate.enclosingClass(), candidate.enclosingMethod()))
-                .build();
+        return new ReifiedDeclaration(
+                candidate.typeVariable(),
+                candidate.enclosingClass(),
+                simpleClasses.findRealAccess(candidate.enclosingClass(), candidate.enclosingMethod()),
+                findMembers(candidate),
+                candidate.hasClass()
+        );
     }
 
     private List<JCTree.JCMethodDecl> findMembers(ReifiedCandidate candidate) {
@@ -137,7 +140,6 @@ public class ReifiedProcessor extends AbstractProcessor {
         return simpleClasses.findConstructors(candidate.enclosingClass());
     }
 
-    @SneakyThrows
     private void processing() {
         diagnosticHandlerWorker.useCachedHandler();
         this.reifiedResults = new ListBuffer<>();
@@ -206,7 +208,7 @@ public class ReifiedProcessor extends AbstractProcessor {
         return environment.getRootElements()
                 .stream()
                 .map(element -> simpleTypes.findClassEnv(trees.getTree(element)))
-                .onlyPresent()
+                .flatMap(Optional::stream)
                 .map(env -> env.tree)
                 .map(scanner::scan)
                 .flatMap(Collection::stream)
@@ -238,7 +240,7 @@ public class ReifiedProcessor extends AbstractProcessor {
                 .stream()
                 .map(methodScanner::scan)
                 .flatMap(Collection::stream)
-                .peek(methodInvocation -> methodInvocation.reifiedType(simpleTypes.inferReifiedType(methodInvocation)))
+                .peek(methodInvocation -> methodInvocation.setReifiedType(simpleTypes.inferReifiedType(methodInvocation)))
                 .forEach(reifiedResults::add);
     }
 
@@ -248,7 +250,7 @@ public class ReifiedProcessor extends AbstractProcessor {
                 .stream()
                 .map(classScanner::scan)
                 .flatMap(Collection::stream)
-                .peek(classInit -> classInit.reifiedType(simpleTypes.inferReifiedType(classInit)))
+                .peek(classInit -> classInit.setReifiedType(simpleTypes.inferReifiedType(classInit)))
                 .forEach(reifiedResults::add);
     }
 
@@ -283,11 +285,20 @@ public class ReifiedProcessor extends AbstractProcessor {
         simpleMaker.processMembers(declaration);
     }
 
+    private List<JCTree> findCompilationUnits() {
+        return environment.getRootElements()
+                .stream()
+                .map(element -> simpleTypes.findClassEnv(trees.getTree(element)))
+                .flatMap(Optional::stream)
+                .map(env -> env.tree)
+                .collect(List.collector());
+    }
+
     private List<JCTree> findCompilationUnits(ReifiedDeclaration reifiedDeclaration) {
         return environment.getRootElements()
                 .stream()
                 .map(element -> simpleTypes.findClassEnv(trees.getTree(element)))
-                .onlyPresent()
+                .flatMap(Optional::stream)
                 .filter(unit -> checkClassScope(reifiedDeclaration, unit))
                 .map(env -> env.tree)
                 .collect(List.collector());

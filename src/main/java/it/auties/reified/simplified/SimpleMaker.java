@@ -11,17 +11,19 @@ import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.Name;
 import it.auties.reified.model.ReifiedArrayInitialization;
 import it.auties.reified.model.ReifiedDeclaration;
-import lombok.AllArgsConstructor;
 
 import javax.lang.model.element.Element;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.NoSuchElementException;
 
-@AllArgsConstructor
 public class SimpleMaker {
     private final TreeMaker maker;
     private final SimpleTypes simpleTypes;
+    public SimpleMaker(TreeMaker maker, SimpleTypes simpleTypes) {
+        this.maker = maker;
+        this.simpleTypes = simpleTypes;
+    }
 
     public JCTree.JCExpression classLiteral(Type type) {
         return maker.ClassLiteral(type);
