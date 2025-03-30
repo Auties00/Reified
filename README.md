@@ -65,7 +65,7 @@ class JsonUtils {
 
     public static <@Reified T> T fromJson(String json){
         try {
-            return JACKSON.readValue(json, clazz);
+            return JACKSON.readValue(json, T);
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }
